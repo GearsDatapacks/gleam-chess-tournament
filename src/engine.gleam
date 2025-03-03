@@ -1,4 +1,4 @@
-import erlang_template/chess
+import chess
 import gleam/dynamic/decode
 import gleam/erlang/process
 import gleam/json
@@ -30,9 +30,8 @@ fn handle_request(request: Request) -> Response {
 
 fn move_decoder() {
   use fen <- decode.field("fen", decode.string)
-  use turn <- decode.field("turn", chess.player_decoder())
   use failed_moves <- decode.field("failed_moves", decode.list(decode.string))
-  decode.success(#(fen, turn, failed_moves))
+  decode.success(#(fen, failed_moves))
 }
 
 fn handle_move(request: Request) -> Response {
@@ -41,7 +40,7 @@ fn handle_move(request: Request) -> Response {
   case decode_result {
     Error(_) -> wisp.bad_request()
     Ok(move) -> {
-      let move_result = chess.move(move.0, move.1, move.2)
+      let move_result = chess.move(move.0, move.1)
       case move_result {
         Ok(move) -> wisp.ok() |> wisp.string_body(move)
         Error(reason) ->

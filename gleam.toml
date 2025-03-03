@@ -1,4 +1,4 @@
-name = "erlang_template"
+name = "engine"
 version = "1.0.0"
 target = "erlang"
 
