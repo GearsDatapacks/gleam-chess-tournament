@@ -2,7 +2,7 @@ import gleam/result
 import gleam/string
 
 pub type Piece {
-  Piece(colour: Colour, kind: PieceKind)
+  Piece(colour: Colour, kind: Kind)
 }
 
 pub type Colour {
@@ -10,7 +10,7 @@ pub type Colour {
   Black
 }
 
-pub type PieceKind {
+pub type Kind {
   King
   Queen
   Bishop

@@ -1,12 +1,13 @@
 import chess/board
 import chess/piece
+import gleam/dict
 import gleam/int
 import gleam/option.{None, Some}
 import gleam/string
 
 pub type Game {
   Game(
-    board: board.Board,
+    board: dict.Dict(board.Position, board.Square),
     to_move: piece.Colour,
     castling: Castling,
     en_passant: option.Option(board.Position),

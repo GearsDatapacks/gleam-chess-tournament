@@ -6,9 +6,8 @@ import gleam/string
 
 pub const size = 8
 
-pub type Board {
-  Board(squares: Dict(Position, Square))
-}
+pub type Board =
+  Dict(Position, Square)
 
 pub type Square {
   Empty
@@ -65,8 +64,7 @@ fn square_from_binary(bits: BitArray) -> Result(#(Square, BitArray), Nil) {
 }
 
 pub fn empty() -> Board {
-  let squares = populate_squares(dict.new(), 0, 0)
-  Board(squares:)
+  populate_squares(dict.new(), 0, 0)
 }
 
 fn populate_squares(
@@ -92,7 +90,7 @@ fn to_binary_loop(
   rank: Int,
   bits: BitArray,
 ) -> BitArray {
-  case dict.get(board.squares, Position(file:, rank:)) {
+  case dict.get(board, Position(file:, rank:)) {
     Error(_) -> bits
     Ok(square) -> {
       let square_bits = case square {
@@ -109,15 +107,14 @@ fn to_binary_loop(
 }
 
 pub fn from_binary(bits: BitArray) -> Board {
-  from_binary_loop(bits, 0, 0, Board(dict.new()))
+  from_binary_loop(bits, 0, 0, dict.new())
 }
 
 fn from_binary_loop(bits: BitArray, file: Int, rank: Int, board: Board) -> Board {
   case square_from_binary(bits) {
     Error(_) -> board
     Ok(#(square, bits)) -> {
-      let board =
-        Board(dict.insert(board.squares, Position(file:, rank:), square))
+      let board = dict.insert(board, Position(file:, rank:), square)
       let #(x, y) = case file + 1 >= size {
         False -> #(file + 1, rank)
         True -> #(0, rank + 1)
@@ -145,11 +142,7 @@ fn from_fen_loop(fen: String, file: Int, rank: Int, board: Board) -> Board {
             Error(_) -> board
             Ok(piece) -> {
               let board =
-                Board(dict.insert(
-                  board.squares,
-                  Position(file:, rank:),
-                  Occupied(piece),
-                ))
+                dict.insert(board, Position(file:, rank:), Occupied(piece))
               from_fen_loop(fen, file + 1, rank, board)
             }
           }
@@ -182,7 +175,7 @@ fn to_fen_loop(
     True -> #(0, rank - 1)
   }
 
-  case dict.get(board.squares, Position(file:, rank:)) {
+  case dict.get(board, Position(file:, rank:)) {
     Error(_) -> fen
     Ok(Empty) ->
       case next_file == 0 {

@@ -26,7 +26,9 @@ fn do_perft(game: game.Game, depth: Int) -> Int {
     0 -> list.length(legal_moves)
     _ ->
       list.map(legal_moves, fn(move) {
-        game |> move.apply_move(move) |> do_perft(depth - 1)
+        game
+        |> move.apply(move)
+        |> do_perft(depth - 1)
       })
       |> int.sum
   }
@@ -38,40 +40,68 @@ pub fn perft_initial_position_test() {
   ])
 }
 
+fn test_apply_move(starting_fen: String, moves: List(String), final_fen: String) {
+  let moves = list.map(moves, move.from_string)
+
+  starting_fen
+  |> game.from_fen
+  |> list.fold(moves, _, move.apply)
+  |> game.to_fen
+  |> should.equal(final_fen)
+}
+
 pub fn apply_move_test() {
-  board.starting_fen
-  |> game.from_fen
-  |> move.apply_move(move.from_string("a2a4"))
-  |> game.to_fen
-  |> should.equal("rnbqkbnr/pppppppp/8/8/P7/8/1PPPPPPP/RNBQKBNR b KQkq a3 0 1")
+  test_apply_move(
+    board.starting_fen,
+    ["a2a4"],
+    "rnbqkbnr/pppppppp/8/8/P7/8/1PPPPPPP/RNBQKBNR b KQkq a3 0 1",
+  )
 
-  board.starting_fen
-  |> game.from_fen
-  |> move.apply_move(move.from_string("g1f3"))
-  |> game.to_fen
-  |> should.equal("rnbqkbnr/pppppppp/8/8/8/5N2/PPPPPPPP/RNBQKB1R b KQkq - 1 1")
+  test_apply_move(
+    board.starting_fen,
+    ["g1f3"],
+    "rnbqkbnr/pppppppp/8/8/8/5N2/PPPPPPPP/RNBQKB1R b KQkq - 1 1",
+  )
 
-  board.starting_fen
-  |> game.from_fen
-  |> move.apply_move(move.from_string("a2a4"))
-  |> move.apply_move(move.from_string("b8c6"))
-  |> game.to_fen
-  |> should.equal("r1bqkbnr/pppppppp/2n5/8/P7/8/1PPPPPPP/RNBQKBNR w KQkq - 1 2")
+  test_apply_move(
+    board.starting_fen,
+    ["a2a4", "b8c6"],
+    "r1bqkbnr/pppppppp/2n5/8/P7/8/1PPPPPPP/RNBQKBNR w KQkq - 1 2",
+  )
 
-  board.starting_fen
-  |> game.from_fen
-  |> move.apply_move(move.from_string("a2a4"))
-  |> move.apply_move(move.from_string("b7b5"))
-  |> game.to_fen
-  |> should.equal(
+  test_apply_move(
+    board.starting_fen,
+    ["a2a4", "b7b5"],
     "rnbqkbnr/p1pppppp/8/1p6/P7/8/1PPPPPPP/RNBQKBNR w KQkq b6 0 2",
   )
 
-  "rnbqkbnr/p1p1pppp/8/Pp1p4/8/8/1PPPPPPP/RNBQKBNR w KQkq b6 0 3"
-  |> game.from_fen
-  |> move.apply_move(move.from_string("a5b6"))
-  |> game.to_fen
-  |> should.equal(
+  test_apply_move(
+    "rnbqkbnr/p1p1pppp/8/Pp1p4/8/8/1PPPPPPP/RNBQKBNR w KQkq b6 0 3",
+    ["a5b6"],
     "rnbqkbnr/p1p1pppp/1P6/3p4/8/8/1PPPPPPP/RNBQKBNR b KQkq - 0 3",
+  )
+
+  test_apply_move(
+    "rnbqkbnr/pp3ppp/8/2ppp3/4P3/5N2/PPPPBPPP/RNBQK2R w KQkq - 0 4",
+    ["O-O"],
+    "rnbqkbnr/pp3ppp/8/2ppp3/4P3/5N2/PPPPBPPP/RNBQ1RK1 b kq - 1 4",
+  )
+
+  test_apply_move(
+    "rnbqkbnr/ppp2ppp/8/3pp3/3P4/2N1B3/PPPQPPPP/R3KBNR w KQkq - 0 5",
+    ["O-O-O"],
+    "rnbqkbnr/ppp2ppp/8/3pp3/3P4/2N1B3/PPPQPPPP/2KR1BNR b kq - 1 5",
+  )
+
+  test_apply_move(
+    "rnbqk2r/ppppbppp/5n2/4p3/2PPP3/8/PP3PPP/RNBQKBNR b KQkq - 0 4",
+    ["O-O"],
+    "rnbq1rk1/ppppbppp/5n2/4p3/2PPP3/8/PP3PPP/RNBQKBNR w KQ - 1 5",
+  )
+
+  test_apply_move(
+    "r3kbnr/pppqpppp/2n1b3/3p4/3PP3/8/PPP2PPP/RNBQKBNR b KQkq - 0 5",
+    ["O-O-O"],
+    "2kr1bnr/pppqpppp/2n1b3/3p4/3PP3/8/PPP2PPP/RNBQKBNR w KQ - 1 6",
   )
 }
