@@ -1,4 +1,4 @@
-import chess/board.{type Move, type Position, Board}
+import chess/board.{type Position, Board}
 import chess/game.{type Game, Game}
 import chess/move/direction.{type Direction}
 import chess/piece
@@ -6,9 +6,24 @@ import gleam/dict
 import gleam/list
 import gleam/option.{None, Some}
 import gleam/result
+import gleam/string
+
+pub type Move {
+  Move(from: Position, to: Position)
+}
+
+pub fn to_string(move: Move) -> String {
+  board.position_to_string(move.from) <> board.position_to_string(move.to)
+}
+
+pub fn from_string(string: String) -> Move {
+  let from = string |> string.drop_end(2) |> board.position_from_string
+  let to = string |> string.drop_start(2) |> board.position_from_string
+  Move(from:, to:)
+}
 
 // TODO: castling, check
-pub fn legal_moves(game: Game) -> List(Move) {
+pub fn legal(game: Game) -> List(Move) {
   use moves, position, square <- dict.fold(game.board.squares, [])
   case square {
     board.Occupied(piece) if piece.colour == game.to_move ->
@@ -51,7 +66,7 @@ fn maybe_move(
   game: Game,
   from: Position,
   direction: Direction,
-) -> Result(board.Move, Nil) {
+) -> Result(Move, Nil) {
   case direction.in_direction(from, direction) {
     Error(_) -> Error(Nil)
     Ok(to) ->
@@ -60,7 +75,7 @@ fn maybe_move(
         Ok(square) ->
           case move_validity(square, game.to_move) {
             Invalid -> Error(Nil)
-            Valid | ValidThenStop -> Ok(board.Move(from:, to:))
+            Valid | ValidThenStop -> Ok(Move(from:, to:))
           }
       }
   }
@@ -88,13 +103,10 @@ fn get_sliding_moves_loop(
         |> result.map(move_validity(_, game.to_move))
       {
         Error(_) | Ok(Invalid) -> moves
-        Ok(ValidThenStop) -> [
-          board.Move(from: position, to: new_position),
-          ..moves
-        ]
+        Ok(ValidThenStop) -> [Move(from: position, to: new_position), ..moves]
         Ok(Valid) ->
           get_sliding_moves_loop(game, new_position, direction, [
-            board.Move(from: position, to: new_position),
+            Move(from: position, to: new_position),
             ..moves
           ])
       }
@@ -136,8 +148,7 @@ fn get_pawn_moves(game: Game, position: Position) -> List(Move) {
                 move_validity(square, game.to_move),
                 game.en_passant == Some(to)
               {
-                _, True | ValidThenStop, _ ->
-                  Ok(board.Move(from: position, to:))
+                _, True | ValidThenStop, _ -> Ok(Move(from: position, to:))
                 _, _ -> Error(Nil)
               }
           }
