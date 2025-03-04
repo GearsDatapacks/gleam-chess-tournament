@@ -59,7 +59,7 @@ pub fn from_string(string: String) -> Move {
   }
 }
 
-// TODO: castling, check
+// TODO: check
 pub fn legal(game: Game) -> List(Move) {
   use moves, position, square <- dict.fold(game.board, [])
   case square {
@@ -103,7 +103,8 @@ fn maybe_move(
   game: Game,
   from: Position,
   direction: Direction,
-) -> Result(Move, Nil) {
+  allow_captures: Bool,
+) -> Result(BasicMove, Nil) {
   case direction.in_direction(from, direction) {
     Error(_) -> Error(Nil)
     Ok(to) ->
@@ -111,8 +112,9 @@ fn maybe_move(
         Error(_) -> Error(Nil)
         Ok(square) ->
           case move_validity(square, game.to_move) {
-            Invalid -> Error(Nil)
-            Valid | ValidThenStop -> Ok(Basic(Move(from:, to:)))
+            Valid -> Ok(Move(from:, to:))
+            ValidThenStop if allow_captures -> Ok(Move(from:, to:))
+            _ -> Error(Nil)
           }
       }
   }
@@ -155,7 +157,9 @@ fn get_sliding_moves_loop(
 
 fn get_king_moves(game: Game, position: Position) -> List(Move) {
   direction.queen_directions
-  |> list.filter_map(maybe_move(game, position, _))
+  |> list.filter_map(fn(direction) {
+    maybe_move(game, position, direction, True) |> result.map(Basic)
+  })
   |> list.append(get_castling_moves(game))
 }
 
@@ -229,7 +233,10 @@ fn get_castling_moves(game: Game) -> List(Move) {
 }
 
 fn get_knight_moves(game: Game, position: Position) -> List(Move) {
-  direction.knight_directions |> list.filter_map(maybe_move(game, position, _))
+  direction.knight_directions
+  |> list.filter_map(fn(direction) {
+    maybe_move(game, position, direction, True) |> result.map(Basic)
+  })
 }
 
 fn get_pawn_moves(game: Game, position: Position) -> List(Move) {
@@ -237,13 +244,13 @@ fn get_pawn_moves(game: Game, position: Position) -> List(Move) {
     Black -> #(direction.down, [direction.down_left, direction.down_right])
     White -> #(direction.up, [direction.up_left, direction.up_right])
   }
-  let directions = case game.to_move, position.rank {
-    Black, 6 | White, 1 -> [direction, direction.multiply(direction, 2)]
-    _, _ -> [direction]
+
+  let can_double_move = case game.to_move, position.rank {
+    Black, 6 | White, 1 -> True
+    _, _ -> False
   }
-  directions
-  |> list.filter_map(maybe_move(game, position, _))
-  |> list.append(
+
+  let moves =
     take_directions
     |> list.filter_map(fn(direction) {
       case direction.in_direction(position, direction) {
@@ -262,8 +269,24 @@ fn get_pawn_moves(game: Game, position: Position) -> List(Move) {
               }
           }
       }
-    }),
-  )
+    })
+
+  case maybe_move(game, position, direction, False), can_double_move {
+    Ok(move), False ->
+      case game.to_move, move.to.rank {
+        White, 7 | Black, 0 ->
+          piece.promotion_kinds
+          |> list.map(Promotion(move, _))
+          |> list.append(moves)
+        _, _ -> [Basic(move), ..moves]
+      }
+    Ok(single_move), True ->
+      case maybe_move(game, position, direction.multiply(direction, 2), False) {
+        Error(_) -> [Basic(single_move), ..moves]
+        Ok(double_move) -> [Basic(single_move), Basic(double_move), ..moves]
+      }
+    Error(_), _ -> moves
+  }
 }
 
 pub fn apply(game: Game, move: Move) -> Game {

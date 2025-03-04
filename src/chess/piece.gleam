@@ -95,3 +95,5 @@ pub fn to_fen(piece: Piece) -> String {
     White -> kind
   }
 }
+
+pub const promotion_kinds = [Queen, Bishop, Knight, Rook]
