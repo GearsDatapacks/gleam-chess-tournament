@@ -219,7 +219,7 @@ fn get_castling_moves(game: Game) -> List(Move) {
         -> [LongCastle, ..moves]
         _, _, _, _, _ -> moves
       }
-    Black if game.castling.black_queenside ->
+    White if game.castling.white_queenside ->
       case
         dict.get(game.board, board.Position(4, 0)),
         dict.get(game.board, board.Position(3, 0)),
@@ -463,5 +463,29 @@ fn apply_basic_move(
     }
   }
 
-  Game(..game, board:, half_moves:, en_passant:)
+  let castling = case moved_piece, move.from.file {
+    board.Occupied(Piece(White, piece.King)), _ ->
+      game.Castling(
+        ..game.castling,
+        white_kingside: False,
+        white_queenside: False,
+      )
+    board.Occupied(Piece(Black, kind: piece.King)), _ ->
+      game.Castling(
+        ..game.castling,
+        black_kingside: False,
+        black_queenside: False,
+      )
+    board.Occupied(Piece(White, piece.Rook)), 7 ->
+      game.Castling(..game.castling, white_kingside: False)
+    board.Occupied(Piece(White, piece.Rook)), 0 ->
+      game.Castling(..game.castling, white_queenside: False)
+    board.Occupied(Piece(Black, piece.Rook)), 7 ->
+      game.Castling(..game.castling, black_kingside: False)
+    board.Occupied(Piece(Black, piece.Rook)), 0 ->
+      game.Castling(..game.castling, black_queenside: False)
+    _, _ -> game.castling
+  }
+
+  Game(..game, board:, half_moves:, en_passant:, castling:)
 }
