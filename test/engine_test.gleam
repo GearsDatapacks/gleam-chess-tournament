@@ -104,4 +104,16 @@ pub fn apply_move_test() {
     ["O-O-O"],
     "2kr1bnr/pppqpppp/2n1b3/3p4/3PP3/8/PPP2PPP/RNBQKBNR w KQ - 1 6",
   )
+
+  test_apply_move(
+    "rnbq1bnr/pppPkpp1/4p2p/8/8/8/PPPP1PPP/RNBQKBNR w KQ - 1 5",
+    ["d7c8q"],
+    "rnQq1bnr/ppp1kpp1/4p2p/8/8/8/PPPP1PPP/RNBQKBNR b KQ - 0 5",
+  )
+
+  test_apply_move(
+    "rnbqkbnr/pppp1ppp/8/8/8/4P2P/PPPpKPP1/RNBQ1BNR b kq - 1 5",
+    ["d2c1n"],
+    "rnbqkbnr/pppp1ppp/8/8/8/4P2P/PPP1KPP1/RNnQ1BNR w kq - 0 6",
+  )
 }

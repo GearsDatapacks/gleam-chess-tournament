@@ -28,23 +28,28 @@ pub fn to_string(move: Move) -> String {
     Promotion(move, new_kind) ->
       board.position_to_string(move.from)
       <> board.position_to_string(move.to)
-      <> "="
-      <> piece.to_fen(Piece(White, new_kind))
+      <> piece.to_fen(Piece(Black, new_kind))
   }
 }
 
 pub fn from_string(string: String) -> Move {
-  case string, string.split_once(string, "=") {
+  case string, string.length(string) {
     "O-O", _ -> ShortCastle
     "O-O-O", _ -> LongCastle
-    _, Ok(#(move, new_kind)) -> {
-      {
-        let from = move |> string.drop_end(2) |> board.position_from_string
-        let to = move |> string.drop_start(2) |> board.position_from_string
-        let new_kind =
-          result.unwrap(piece.from_fen(new_kind), Piece(White, piece.Pawn)).kind
-        Promotion(Move(from:, to:), new_kind)
-      }
+    _, 5 -> {
+      let from = string |> string.drop_end(3) |> board.position_from_string
+      let to =
+        string
+        |> string.drop_start(2)
+        |> string.drop_end(1)
+        |> board.position_from_string
+      let new_kind =
+        string
+        |> string.drop_start(4)
+        |> piece.from_fen
+        |> result.map(fn(piece) { piece.kind })
+        |> result.unwrap(piece.Pawn)
+      Promotion(Move(from:, to:), new_kind)
     }
     _, _ -> {
       let from = string |> string.drop_end(2) |> board.position_from_string
