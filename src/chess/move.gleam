@@ -125,11 +125,15 @@ fn get_sliding_moves(
   position: Position,
   directions: List(Direction),
 ) -> List(Move) {
-  list.flat_map(directions, get_sliding_moves_loop(game, position, _, []))
+  list.flat_map(
+    directions,
+    get_sliding_moves_loop(game, position, position, _, []),
+  )
 }
 
 fn get_sliding_moves_loop(
   game: Game,
+  original_position: Position,
   position: Position,
   direction: Direction,
   moves: List(Move),
@@ -143,14 +147,17 @@ fn get_sliding_moves_loop(
       {
         Error(_) | Ok(Invalid) -> moves
         Ok(ValidThenStop) -> [
-          Basic(Move(from: position, to: new_position)),
+          Basic(Move(from: original_position, to: new_position)),
           ..moves
         ]
         Ok(Valid) ->
-          get_sliding_moves_loop(game, new_position, direction, [
-            Basic(Move(from: position, to: new_position)),
-            ..moves
-          ])
+          get_sliding_moves_loop(
+            game,
+            original_position,
+            new_position,
+            direction,
+            [Basic(Move(from: original_position, to: new_position)), ..moves],
+          )
       }
   }
 }
