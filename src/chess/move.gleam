@@ -270,30 +270,33 @@ fn get_pawn_moves(game: Game, position: Position) -> List(Move) {
                 move_validity(square, game.to_move),
                 game.en_passant == Some(to)
               {
-                _, True | ValidThenStop, _ ->
-                  Ok(Basic(Move(from: position, to:)))
+                _, True | ValidThenStop, _ -> Ok(Move(from: position, to:))
                 _, _ -> Error(Nil)
               }
           }
       }
     })
 
-  case maybe_move(game, position, direction, False), can_double_move {
-    Ok(move), False ->
-      case game.to_move, move.to.rank {
-        White, 7 | Black, 0 ->
-          piece.promotion_kinds
-          |> list.map(Promotion(move, _))
-          |> list.append(moves)
-        _, _ -> [Basic(move), ..moves]
-      }
+  let moves = case
+    maybe_move(game, position, direction, False),
+    can_double_move
+  {
+    Ok(move), False -> [move, ..moves]
     Ok(single_move), True ->
       case maybe_move(game, position, direction.multiply(direction, 2), False) {
-        Error(_) -> [Basic(single_move), ..moves]
-        Ok(double_move) -> [Basic(single_move), Basic(double_move), ..moves]
+        Error(_) -> [single_move, ..moves]
+        Ok(double_move) -> [single_move, double_move, ..moves]
       }
     Error(_), _ -> moves
   }
+
+  list.flat_map(moves, fn(move) {
+    case game.to_move, move.to.rank {
+      Black, 0 | White, 7 ->
+        piece.promotion_kinds |> list.map(Promotion(move, _))
+      _, _ -> [Basic(move)]
+    }
+  })
 }
 
 pub fn apply(game: Game, move: Move) -> Game {
