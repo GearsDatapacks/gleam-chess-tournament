@@ -99,7 +99,7 @@ pub fn legal(game: Game) -> List(Move) {
 
   use move <- list.filter(pseudo_legal_moves)
   case move {
-    Basic(move) -> {
+    Basic(move) | Promotion(move:, ..) -> {
       case dict.get(game.board, move.from) {
         // If the king is in check, it can only move out of the check line.
         Ok(board.Occupied(Piece(kind: piece.King, ..))) if in_check ->
@@ -115,7 +115,7 @@ pub fn legal(game: Game) -> List(Move) {
         _ -> !is_pinned(move.from, move.to)
       }
     }
-    _ -> True
+    ShortCastle | LongCastle -> !in_check
   }
 }
 
