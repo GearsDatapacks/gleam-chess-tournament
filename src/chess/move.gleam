@@ -89,6 +89,14 @@ pub fn legal(game: Game) -> List(Move) {
       }
   }
 
+  let pin_lines: dict.Dict(Position, List(Position)) = get_pin_lines(game)
+  let is_pinned = fn(from, to) {
+    case dict.get(pin_lines, from) {
+      Error(_) -> False
+      Ok(line) -> !list.contains(line, to)
+    }
+  }
+
   use move <- list.filter(pseudo_legal_moves)
   case move {
     Basic(move) -> {
@@ -99,10 +107,12 @@ pub fn legal(game: Game) -> List(Move) {
           && !list.contains(attacks, move.to)
         // If the king is in check, another piece can move into the check line
         // to block the check.
-        _ if in_check -> list.contains(check_block_line, move.to)
+        _ if in_check ->
+          list.contains(check_block_line, move.to)
+          && !is_pinned(move.from, move.to)
         Ok(board.Occupied(Piece(kind: piece.King, ..))) ->
           !list.contains(attacks, move.to)
-        _ -> True
+        _ -> !is_pinned(move.from, move.to)
       }
     }
     _ -> True
@@ -189,6 +199,88 @@ fn get_sliding_check_moves_loop(
         Error(_) -> Error(Nil)
         Ok(board.Occupied(_)) if found_king -> Ok([new_position, ..squares])
         Ok(board.Occupied(_)) -> Error(Nil)
+      }
+  }
+}
+
+fn get_pin_lines(game: Game) -> dict.Dict(Position, List(Position)) {
+  use lines, position, square <- dict.fold(game.board, dict.new())
+  case square {
+    board.Occupied(piece) if piece.colour != game.to_move ->
+      case piece.kind {
+        Rook ->
+          case
+            get_sliding_pin_moves(game, position, direction.rook_directions)
+          {
+            Error(_) -> lines
+            Ok(#(pinned, line)) -> dict.insert(lines, pinned, line)
+          }
+        Bishop ->
+          case
+            get_sliding_pin_moves(game, position, direction.bishop_directions)
+          {
+            Error(_) -> lines
+            Ok(#(pinned, line)) -> dict.insert(lines, pinned, line)
+          }
+        Queen ->
+          case
+            get_sliding_pin_moves(game, position, direction.queen_directions)
+          {
+            Error(_) -> lines
+            Ok(#(pinned, line)) -> dict.insert(lines, pinned, line)
+          }
+        _ -> lines
+      }
+    _ -> lines
+  }
+}
+
+fn get_sliding_pin_moves(
+  game: Game,
+  position: Position,
+  directions: List(Direction),
+) -> Result(#(Position, List(Position)), Nil) {
+  list.find_map(directions, get_sliding_pin_moves_loop(
+    game,
+    position,
+    _,
+    [position],
+    None,
+  ))
+}
+
+fn get_sliding_pin_moves_loop(
+  game: Game,
+  position: Position,
+  direction: Direction,
+  squares: List(Position),
+  pinned_piece: Option(Position),
+) -> Result(#(Position, List(Position)), Nil) {
+  case direction.in_direction(position, direction), pinned_piece {
+    Error(_), _ -> Error(Nil)
+    Ok(new_position), _ ->
+      case dict.get(game.board, new_position), pinned_piece {
+        Ok(board.Empty), _ ->
+          get_sliding_pin_moves_loop(
+            game,
+            new_position,
+            direction,
+            [new_position, ..squares],
+            pinned_piece,
+          )
+        Ok(board.Occupied(Piece(colour:, kind: piece.King))), Some(pinned)
+          if colour == game.to_move
+        -> Ok(#(pinned, squares))
+        Ok(board.Occupied(piece)), None if piece.colour == game.to_move ->
+          get_sliding_pin_moves_loop(
+            game,
+            new_position,
+            direction,
+            [new_position, ..squares],
+            Some(new_position),
+          )
+        Ok(board.Occupied(_)), _ -> Error(Nil)
+        Error(_), _ -> Error(Nil)
       }
   }
 }
