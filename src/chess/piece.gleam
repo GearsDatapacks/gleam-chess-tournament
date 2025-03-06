@@ -97,3 +97,10 @@ pub fn to_fen(piece: Piece) -> String {
 }
 
 pub const promotion_kinds = [Queen, Bishop, Knight, Rook]
+
+pub fn reverse_colour(colour: Colour) -> Colour {
+  case colour {
+    Black -> White
+    White -> Black
+  }
+}
