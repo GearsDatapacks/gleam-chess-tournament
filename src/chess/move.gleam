@@ -60,9 +60,9 @@ pub fn from_string(string: String) -> Move {
 }
 
 pub fn legal(game: Game) -> List(Move) {
-  let pseudo_legal_moves = pseudo_legal(game)
   let attacks =
     attacks(Game(..game, to_move: piece.reverse_colour(game.to_move)))
+  let pseudo_legal_moves = pseudo_legal(game, attacks)
 
   let king_position =
     dict.fold(game.board, board.Position(0, 0), fn(acc, position, square) {
@@ -333,7 +333,7 @@ fn get_check_block_line(game: Game, king_position: Position) -> CheckLine {
         _ ->
           case
             line,
-            get_moves_for_piece(game, piece, position)
+            get_moves_for_piece(game, [], piece, position)
             |> list.any(fn(move) {
               case move {
                 Basic(Move(to:, ..)) | Promotion(Move(to:, ..), ..) ->
@@ -351,17 +351,18 @@ fn get_check_block_line(game: Game, king_position: Position) -> CheckLine {
   }
 }
 
-fn pseudo_legal(game: Game) -> List(Move) {
+fn pseudo_legal(game: Game, attacks: List(Position)) -> List(Move) {
   use moves, position, square <- dict.fold(game.board, [])
   case square {
     board.Occupied(piece) if piece.colour == game.to_move ->
-      list.append(get_moves_for_piece(game, piece, position), moves)
+      list.append(get_moves_for_piece(game, attacks, piece, position), moves)
     _ -> moves
   }
 }
 
 fn get_moves_for_piece(
   game: Game,
+  attacks: List(Position),
   piece: piece.Piece,
   position: Position,
 ) -> List(Move) {
@@ -369,7 +370,7 @@ fn get_moves_for_piece(
     Bishop -> get_sliding_moves(game, position, direction.bishop_directions)
     Queen -> get_sliding_moves(game, position, direction.queen_directions)
     Rook -> get_sliding_moves(game, position, direction.rook_directions)
-    King -> get_king_moves(game, position)
+    King -> get_king_moves(game, attacks, position)
     Pawn -> get_pawn_moves(game, position)
     Knight -> get_knight_moves(game, position)
   }
@@ -458,26 +459,37 @@ fn get_sliding_moves_loop(
   }
 }
 
-fn get_king_moves(game: Game, position: Position) -> List(Move) {
+fn get_king_moves(
+  game: Game,
+  attacks: List(Position),
+  position: Position,
+) -> List(Move) {
   direction.queen_directions
   |> list.filter_map(fn(direction) {
     maybe_move(game, position, direction, True) |> result.map(Basic)
   })
-  |> list.append(get_castling_moves(game))
+  |> list.append(get_castling_moves(game, attacks))
 }
 
-fn get_castling_moves(game: Game) -> List(Move) {
+fn get_castling_moves(game: Game, attacks: List(Position)) -> List(Move) {
+  let is_free = fn(position) {
+    case dict.get(game.board, position) {
+      Ok(board.Empty) -> !list.contains(attacks, position)
+      _ -> False
+    }
+  }
+
   let moves = case game.to_move {
     Black if game.castling.black_kingside ->
       case
         dict.get(game.board, board.Position(4, 7)),
-        dict.get(game.board, board.Position(5, 7)),
-        dict.get(game.board, board.Position(6, 7)),
+        is_free(board.Position(5, 7)),
+        is_free(board.Position(6, 7)),
         dict.get(game.board, board.Position(7, 7))
       {
         Ok(board.Occupied(Piece(Black, King))),
-          Ok(board.Empty),
-          Ok(board.Empty),
+          True,
+          True,
           Ok(board.Occupied(Piece(Black, Rook)))
         -> [ShortCastle]
         _, _, _, _ -> []
@@ -485,13 +497,13 @@ fn get_castling_moves(game: Game) -> List(Move) {
     White if game.castling.white_kingside ->
       case
         dict.get(game.board, board.Position(4, 0)),
-        dict.get(game.board, board.Position(5, 0)),
-        dict.get(game.board, board.Position(6, 0)),
+        is_free(board.Position(5, 0)),
+        is_free(board.Position(6, 0)),
         dict.get(game.board, board.Position(7, 0))
       {
         Ok(board.Occupied(Piece(White, King))),
-          Ok(board.Empty),
-          Ok(board.Empty),
+          True,
+          True,
           Ok(board.Occupied(Piece(White, Rook)))
         -> [ShortCastle]
         _, _, _, _ -> []
@@ -502,14 +514,14 @@ fn get_castling_moves(game: Game) -> List(Move) {
     Black if game.castling.black_queenside ->
       case
         dict.get(game.board, board.Position(4, 7)),
-        dict.get(game.board, board.Position(3, 7)),
-        dict.get(game.board, board.Position(2, 7)),
+        is_free(board.Position(3, 7)),
+        is_free(board.Position(2, 7)),
         dict.get(game.board, board.Position(1, 7)),
         dict.get(game.board, board.Position(0, 7))
       {
         Ok(board.Occupied(Piece(Black, King))),
-          Ok(board.Empty),
-          Ok(board.Empty),
+          True,
+          True,
           Ok(board.Empty),
           Ok(board.Occupied(Piece(Black, Rook)))
         -> [LongCastle, ..moves]
@@ -518,14 +530,14 @@ fn get_castling_moves(game: Game) -> List(Move) {
     White if game.castling.white_queenside ->
       case
         dict.get(game.board, board.Position(4, 0)),
-        dict.get(game.board, board.Position(3, 0)),
-        dict.get(game.board, board.Position(2, 0)),
+        is_free(board.Position(3, 0)),
+        is_free(board.Position(2, 0)),
         dict.get(game.board, board.Position(1, 0)),
         dict.get(game.board, board.Position(0, 0))
       {
         Ok(board.Occupied(Piece(White, King))),
-          Ok(board.Empty),
-          Ok(board.Empty),
+          True,
+          True,
           Ok(board.Empty),
           Ok(board.Occupied(Piece(White, Rook)))
         -> [LongCastle, ..moves]
