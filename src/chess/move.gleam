@@ -59,10 +59,42 @@ pub fn from_string(string: String) -> Move {
   }
 }
 
+type AttackInformation {
+  AttackInformation(
+    attacks: List(Position),
+    in_check: Bool,
+    check_attack_lines: List(List(Position)),
+    check_block_line: List(Position),
+    pin_lines: dict.Dict(Position, List(Position)),
+  )
+}
+
+fn is_pinned(
+  from: Position,
+  to: Position,
+  attack_information: AttackInformation,
+) -> Bool {
+  case dict.get(attack_information.pin_lines, from) {
+    Error(_) -> False
+    Ok(line) -> !list.contains(line, to)
+  }
+}
+
+fn piece_can_move(
+  move: BasicMove,
+  attack_information: AttackInformation,
+) -> Bool {
+  case attack_information.in_check {
+    False -> !is_pinned(move.from, move.to, attack_information)
+    True ->
+      list.contains(attack_information.check_block_line, move.to)
+      && !is_pinned(move.from, move.to, attack_information)
+  }
+}
+
 pub fn legal(game: Game) -> List(Move) {
   let attacks =
     attacks(Game(..game, to_move: piece.reverse_colour(game.to_move)))
-  let pseudo_legal_moves = pseudo_legal(game, attacks)
 
   let king_position =
     dict.fold(game.board, Position(0, 0), fn(acc, position, square) {
@@ -89,34 +121,18 @@ pub fn legal(game: Game) -> List(Move) {
       }
   }
 
-  let pin_lines: dict.Dict(Position, List(Position)) = get_pin_lines(game)
-  let is_pinned = fn(from, to) {
-    case dict.get(pin_lines, from) {
-      Error(_) -> False
-      Ok(line) -> !list.contains(line, to)
-    }
-  }
+  let pin_lines = get_pin_lines(game)
 
-  use move <- list.filter(pseudo_legal_moves)
-  case move {
-    Basic(move) | Promotion(move:, ..) -> {
-      case dict.get(game.board, move.from) {
-        // If the king is in check, it can only move out of the check line.
-        Ok(board.Occupied(Piece(kind: piece.King, ..))) if in_check ->
-          !list.any(check_attack_lines, list.contains(_, move.to))
-          && !list.contains(attacks, move.to)
-        // If the king is in check, another piece can move into the check line
-        // to block the check.
-        _ if in_check ->
-          list.contains(check_block_line, move.to)
-          && !is_pinned(move.from, move.to)
-        Ok(board.Occupied(Piece(kind: piece.King, ..))) ->
-          !list.contains(attacks, move.to)
-        _ -> !is_pinned(move.from, move.to)
-      }
-    }
-    ShortCastle | LongCastle -> !in_check
-  }
+  let attack_information =
+    AttackInformation(
+      attacks:,
+      in_check:,
+      check_attack_lines:,
+      check_block_line:,
+      pin_lines:,
+    )
+
+  do_legal(game, attack_information)
 }
 
 fn get_check_attack_lines(game: Game) -> List(List(Position)) {
@@ -333,7 +349,18 @@ fn get_check_block_line(game: Game, king_position: Position) -> CheckLine {
         _ ->
           case
             line,
-            get_moves_for_piece(game, [], piece, position)
+            get_moves_for_piece(
+              game,
+              AttackInformation(
+                attacks: [],
+                in_check: False,
+                check_attack_lines: [],
+                check_block_line: [],
+                pin_lines: dict.new(),
+              ),
+              piece,
+              position,
+            )
             |> list.any(fn(move) {
               case move {
                 Basic(Move(to:, ..)) | Promotion(Move(to:, ..), ..) ->
@@ -351,28 +378,49 @@ fn get_check_block_line(game: Game, king_position: Position) -> CheckLine {
   }
 }
 
-fn pseudo_legal(game: Game, attacks: List(Position)) -> List(Move) {
+fn do_legal(game: Game, attack_information: AttackInformation) -> List(Move) {
   use moves, position, square <- dict.fold(game.board, [])
   case square {
     board.Occupied(piece) if piece.colour == game.to_move ->
-      list.append(get_moves_for_piece(game, attacks, piece, position), moves)
+      list.append(
+        get_moves_for_piece(game, attack_information, piece, position),
+        moves,
+      )
     _ -> moves
   }
 }
 
 fn get_moves_for_piece(
   game: Game,
-  attacks: List(Position),
+  attack_information: AttackInformation,
   piece: piece.Piece,
   position: Position,
 ) -> List(Move) {
   case piece.kind {
-    Bishop -> get_sliding_moves(game, position, direction.bishop_directions)
-    Queen -> get_sliding_moves(game, position, direction.queen_directions)
-    Rook -> get_sliding_moves(game, position, direction.rook_directions)
-    King -> get_king_moves(game, attacks, position)
-    Pawn -> get_pawn_moves(game, position)
-    Knight -> get_knight_moves(game, position)
+    Bishop ->
+      get_sliding_moves(
+        game,
+        position,
+        direction.bishop_directions,
+        attack_information,
+      )
+    Queen ->
+      get_sliding_moves(
+        game,
+        position,
+        direction.queen_directions,
+        attack_information,
+      )
+    Rook ->
+      get_sliding_moves(
+        game,
+        position,
+        direction.rook_directions,
+        attack_information,
+      )
+    King -> get_king_moves(game, attack_information, position)
+    Pawn -> get_pawn_moves(game, position, attack_information)
+    Knight -> get_knight_moves(game, position, attack_information)
   }
 }
 
@@ -415,9 +463,17 @@ fn get_sliding_moves(
   game: Game,
   position: Position,
   directions: List(Direction),
+  attack_information: AttackInformation,
 ) -> List(Move) {
   get_sliding_lines(game, position, directions)
-  |> list.flat_map(list.map(_, Basic))
+  |> list.flat_map(
+    list.filter_map(_, fn(move) {
+      case piece_can_move(move, attack_information) {
+        True -> Ok(Basic(move))
+        False -> Error(Nil)
+      }
+    }),
+  )
 }
 
 fn get_sliding_lines(
@@ -459,22 +515,46 @@ fn get_sliding_moves_loop(
   }
 }
 
-fn get_king_moves(
-  game: Game,
-  attacks: List(Position),
-  position: Position,
-) -> List(Move) {
-  direction.queen_directions
-  |> list.filter_map(fn(direction) {
-    maybe_move(game, position, direction, True) |> result.map(Basic)
-  })
-  |> list.append(get_castling_moves(game, attacks))
+fn king_can_move(move: BasicMove, attack_information: AttackInformation) -> Bool {
+  case attack_information.in_check {
+    False -> !list.contains(attack_information.attacks, move.to)
+    True ->
+      !list.any(attack_information.check_attack_lines, list.contains(_, move.to))
+      && !list.contains(attack_information.attacks, move.to)
+  }
 }
 
-fn get_castling_moves(game: Game, attacks: List(Position)) -> List(Move) {
+fn get_king_moves(
+  game: Game,
+  attack_information: AttackInformation,
+  position: Position,
+) -> List(Move) {
+  let king_moves =
+    direction.queen_directions
+    |> list.filter_map(fn(direction) {
+      case maybe_move(game, position, direction, True) {
+        Error(_) -> Error(Nil)
+        Ok(move) ->
+          case king_can_move(move, attack_information) {
+            True -> Ok(Basic(move))
+            False -> Error(Nil)
+          }
+      }
+    })
+  case attack_information.in_check {
+    True -> king_moves
+    False ->
+      list.append(king_moves, get_castling_moves(game, attack_information))
+  }
+}
+
+fn get_castling_moves(
+  game: Game,
+  attack_information: AttackInformation,
+) -> List(Move) {
   let is_free = fn(position) {
     case dict.get(game.board, position) {
-      Ok(board.Empty) -> !list.contains(attacks, position)
+      Ok(board.Empty) -> !list.contains(attack_information.attacks, position)
       _ -> False
     }
   }
@@ -547,14 +627,29 @@ fn get_castling_moves(game: Game, attacks: List(Position)) -> List(Move) {
   }
 }
 
-fn get_knight_moves(game: Game, position: Position) -> List(Move) {
+fn get_knight_moves(
+  game: Game,
+  position: Position,
+  attack_information: AttackInformation,
+) -> List(Move) {
   direction.knight_directions
   |> list.filter_map(fn(direction) {
-    maybe_move(game, position, direction, True) |> result.map(Basic)
+    case maybe_move(game, position, direction, True) {
+      Error(_) -> Error(Nil)
+      Ok(move) ->
+        case piece_can_move(move, attack_information) {
+          True -> Ok(Basic(move))
+          False -> Error(Nil)
+        }
+    }
   })
 }
 
-fn get_pawn_moves(game: Game, position: Position) -> List(Move) {
+fn get_pawn_moves(
+  game: Game,
+  position: Position,
+  attack_information: AttackInformation,
+) -> List(Move) {
   let #(direction, take_directions) = case game.to_move {
     Black -> #(direction.down, [direction.down_left, direction.down_right])
     White -> #(direction.up, [direction.up_left, direction.up_right])
@@ -610,10 +705,14 @@ fn get_pawn_moves(game: Game, position: Position) -> List(Move) {
   }
 
   list.flat_map(moves, fn(move) {
-    case game.to_move, move.to.rank {
-      Black, 0 | White, 7 ->
-        piece.promotion_kinds |> list.map(Promotion(move, _))
-      _, _ -> [Basic(move)]
+    case piece_can_move(move, attack_information) {
+      False -> []
+      True ->
+        case game.to_move, move.to.rank {
+          Black, 0 | White, 7 ->
+            piece.promotion_kinds |> list.map(Promotion(move, _))
+          _, _ -> [Basic(move)]
+        }
     }
   })
 }
