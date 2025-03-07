@@ -3,10 +3,10 @@ import chess/game.{type Game, Game}
 import chess/move/direction.{type Direction}
 import chess/piece.{Bishop, Black, King, Knight, Pawn, Piece, Queen, Rook, White}
 import gleam/dict
-import gleam/list
 import gleam/option.{type Option, None, Some}
 import gleam/result
 import gleam/string
+import utils/list
 
 pub type Move {
   ShortCastle
