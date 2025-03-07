@@ -1,7 +1,6 @@
 import chess/piece.{type Piece}
 import gleam/dict.{type Dict}
 import gleam/int
-import gleam/result
 import gleam/string
 
 pub const size = 8
@@ -51,18 +50,6 @@ pub fn position_from_string(string: String) -> Position {
   Position(file:, rank: rank - 1)
 }
 
-fn square_from_binary(bits: BitArray) -> Result(#(Square, BitArray), Nil) {
-  case bits {
-    <<piece:size(4), rest:bits>> if piece == 0 -> Ok(#(Empty, rest))
-    _ ->
-      piece.from_binary(bits)
-      |> result.map(fn(pair) {
-        let #(piece, bits) = pair
-        #(Occupied(piece), bits)
-      })
-  }
-}
-
 pub fn empty() -> Board {
   populate_squares(dict.new(), 0, 0)
 }
@@ -77,50 +64,6 @@ fn populate_squares(
     True, False -> populate_squares(squares, 0, rank + 1)
     True, True -> squares
     False, _ -> populate_squares(squares, file + 1, rank)
-  }
-}
-
-pub fn to_binary(board: Board) -> BitArray {
-  to_binary_loop(board, 0, 0, <<>>)
-}
-
-fn to_binary_loop(
-  board: Board,
-  file: Int,
-  rank: Int,
-  bits: BitArray,
-) -> BitArray {
-  case dict.get(board, Position(file:, rank:)) {
-    Error(_) -> bits
-    Ok(square) -> {
-      let square_bits = case square {
-        Empty -> <<0:size(4)>>
-        Occupied(piece) -> piece.to_binary(piece)
-      }
-      let #(x, y) = case file + 1 >= size {
-        False -> #(file + 1, rank)
-        True -> #(0, rank + 1)
-      }
-      to_binary_loop(board, x, y, <<bits:bits, square_bits:bits>>)
-    }
-  }
-}
-
-pub fn from_binary(bits: BitArray) -> Board {
-  from_binary_loop(bits, 0, 0, dict.new())
-}
-
-fn from_binary_loop(bits: BitArray, file: Int, rank: Int, board: Board) -> Board {
-  case square_from_binary(bits) {
-    Error(_) -> board
-    Ok(#(square, bits)) -> {
-      let board = dict.insert(board, Position(file:, rank:), square)
-      let #(x, y) = case file + 1 >= size {
-        False -> #(file + 1, rank)
-        True -> #(0, rank + 1)
-      }
-      from_binary_loop(bits, x, y, board)
-    }
   }
 }
 
