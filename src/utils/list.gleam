@@ -28,7 +28,7 @@ pub fn any(list: List(a), f: fn(a) -> Bool) -> Bool {
   }
 }
 
-pub fn map(list, f) {
+pub fn map(list: List(a), f: fn(a) -> b) -> List(b) {
   do_map(list, f, [])
 }
 
@@ -39,11 +39,11 @@ fn do_map(list: List(a), f: fn(a) -> b, acc: List(b)) -> List(b) {
   }
 }
 
-pub fn filter(list, f) {
+pub fn filter(list: List(a), f: fn(a) -> Bool) -> List(a) {
   do_filter(list, f, [])
 }
 
-fn do_filter(list, f, acc) {
+fn do_filter(list: List(a), f: fn(a) -> Bool, acc: List(a)) -> List(a) {
   case list {
     [] -> acc
     [first, ..rest] ->
@@ -54,11 +54,15 @@ fn do_filter(list, f, acc) {
   }
 }
 
-pub fn filter_map(list, f) {
+pub fn filter_map(list: List(a), f: fn(a) -> Result(b, c)) -> List(b) {
   do_filter_map(list, f, [])
 }
 
-fn do_filter_map(list, f, acc) {
+fn do_filter_map(
+  list: List(a),
+  f: fn(a) -> Result(b, c),
+  acc: List(b),
+) -> List(b) {
   case list {
     [] -> acc
     [first, ..rest] ->
@@ -69,20 +73,9 @@ fn do_filter_map(list, f, acc) {
   }
 }
 
-pub fn flat_map(list, f) {
-  do_flat_map(list, f, [])
-}
-
-fn do_flat_map(list, f, acc) {
+pub fn fold(list: List(a), acc: b, f: fn(b, a) -> b) -> b {
   case list {
     [] -> acc
-    [first, ..rest] -> do_flat_map(rest, f, append(f(first), acc))
-  }
-}
-
-pub fn append(a, b) {
-  case a, b {
-    [], other | other, [] -> other
-    [first, ..a], b -> append(a, [first, ..b])
+    [first, ..rest] -> fold(rest, f(acc, first), f)
   }
 }

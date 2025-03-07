@@ -92,16 +92,6 @@ fn piece_can_move(
   }
 }
 
-fn move_if_possible(
-  move: BasicMove,
-  attack_information: AttackInformation,
-) -> Result(BasicMove, Nil) {
-  case piece_can_move(move, attack_information) {
-    False -> Error(Nil)
-    True -> Ok(move)
-  }
-}
-
 pub fn legal(game: Game) -> List(Move) {
   let attacks =
     attacks(Game(..game, to_move: piece.reverse_colour(game.to_move)))
@@ -359,25 +349,8 @@ fn get_check_block_line(game: Game, king_position: Position) -> CheckLine {
         _ ->
           case
             line,
-            get_moves_for_piece(
-              game,
-              AttackInformation(
-                attacks: [],
-                in_check: False,
-                check_attack_lines: [],
-                check_block_line: [],
-                pin_lines: dict.new(),
-              ),
-              piece,
-              position,
-            )
-            |> list.any(fn(move) {
-              case move {
-                Basic(Move(to:, ..)) | Promotion(Move(to:, ..), ..) ->
-                  to == king_position
-                _ -> False
-              }
-            })
+            get_attacks_for_piece(game, piece, position, [])
+            |> list.contains(king_position)
           {
             _, False -> line
             NoLine, True -> Single([position])
@@ -392,10 +365,7 @@ fn do_legal(game: Game, attack_information: AttackInformation) -> List(Move) {
   use moves, position, square <- dict.fold(game.board, [])
   case square {
     board.Occupied(piece) if piece.colour == game.to_move ->
-      list.append(
-        get_moves_for_piece(game, attack_information, piece, position),
-        moves,
-      )
+      get_moves_for_piece(game, attack_information, piece, position, moves)
     _ -> moves
   }
 }
@@ -405,6 +375,7 @@ fn get_moves_for_piece(
   attack_information: AttackInformation,
   piece: piece.Piece,
   position: Position,
+  moves: List(Move),
 ) -> List(Move) {
   case piece.kind {
     Bishop ->
@@ -413,6 +384,7 @@ fn get_moves_for_piece(
         position,
         direction.bishop_directions,
         attack_information,
+        moves,
       )
     Queen ->
       get_sliding_moves(
@@ -420,6 +392,7 @@ fn get_moves_for_piece(
         position,
         direction.queen_directions,
         attack_information,
+        moves,
       )
     Rook ->
       get_sliding_moves(
@@ -427,10 +400,11 @@ fn get_moves_for_piece(
         position,
         direction.rook_directions,
         attack_information,
+        moves,
       )
-    King -> get_king_moves(game, attack_information, position)
-    Pawn -> get_pawn_moves(game, position, attack_information)
-    Knight -> get_knight_moves(game, position, attack_information)
+    King -> get_king_moves(game, attack_information, position, moves)
+    Pawn -> get_pawn_moves(game, position, attack_information, moves)
+    Knight -> get_knight_moves(game, position, attack_information, moves)
   }
 }
 
@@ -474,13 +448,61 @@ fn get_sliding_moves(
   position: Position,
   directions: List(Direction),
   attack_information: AttackInformation,
+  moves: List(Move),
 ) -> List(Move) {
-  get_sliding_lines(game, position, directions)
-  |> list.flat_map(
-    list.filter_map(_, fn(move) {
-      move_if_possible(move, attack_information) |> result.map(Basic)
-    }),
-  )
+  directions
+  |> list.fold(moves, fn(moves, direction) {
+    get_sliding_moves_loop(
+      game,
+      position,
+      position,
+      direction,
+      attack_information,
+      moves,
+    )
+  })
+}
+
+fn get_sliding_moves_loop(
+  game: Game,
+  original_position: Position,
+  position: Position,
+  direction: Direction,
+  attack_information: AttackInformation,
+  moves: List(Move),
+) -> List(Move) {
+  case direction.in_direction(position, direction) {
+    Error(_) -> moves
+    Ok(new_position) ->
+      case
+        dict.get(game.board, new_position)
+        |> result.map(move_validity(_, game.to_move))
+      {
+        Error(_) | Ok(Invalid) -> moves
+        Ok(ValidThenStop) -> {
+          let move = Move(from: original_position, to: new_position)
+          case piece_can_move(move, attack_information) {
+            False -> moves
+            True -> [Basic(move), ..moves]
+          }
+        }
+        Ok(Valid) -> {
+          let move = Move(from: original_position, to: new_position)
+          let moves = case piece_can_move(move, attack_information) {
+            False -> moves
+            True -> [Basic(move), ..moves]
+          }
+          get_sliding_moves_loop(
+            game,
+            original_position,
+            new_position,
+            direction,
+            attack_information,
+            moves,
+          )
+        }
+      }
+  }
 }
 
 fn get_sliding_lines(
@@ -488,10 +510,10 @@ fn get_sliding_lines(
   position: Position,
   directions: List(Direction),
 ) -> List(List(BasicMove)) {
-  list.map(directions, get_sliding_moves_loop(game, position, position, _, []))
+  list.map(directions, get_sliding_lines_loop(game, position, position, _, []))
 }
 
-fn get_sliding_moves_loop(
+fn get_sliding_lines_loop(
   game: Game,
   original_position: Position,
   position: Position,
@@ -511,7 +533,7 @@ fn get_sliding_moves_loop(
           ..moves
         ]
         Ok(Valid) ->
-          get_sliding_moves_loop(
+          get_sliding_lines_loop(
             game,
             original_position,
             new_position,
@@ -535,29 +557,30 @@ fn get_king_moves(
   game: Game,
   attack_information: AttackInformation,
   position: Position,
+  moves: List(Move),
 ) -> List(Move) {
-  let king_moves =
+  let moves =
     direction.queen_directions
-    |> list.filter_map(fn(direction) {
+    |> list.fold(moves, fn(moves, direction) {
       case maybe_move(game, position, direction, True) {
-        Error(_) -> Error(Nil)
+        Error(_) -> moves
         Ok(move) ->
           case king_can_move(move, attack_information) {
-            True -> Ok(Basic(move))
-            False -> Error(Nil)
+            True -> [Basic(move), ..moves]
+            False -> moves
           }
       }
     })
   case attack_information.in_check {
-    True -> king_moves
-    False ->
-      list.append(king_moves, get_castling_moves(game, attack_information))
+    True -> moves
+    False -> get_castling_moves(game, attack_information, moves)
   }
 }
 
 fn get_castling_moves(
   game: Game,
   attack_information: AttackInformation,
+  moves: List(Move),
 ) -> List(Move) {
   let is_free = fn(position) {
     case dict.get(game.board, position) {
@@ -578,8 +601,8 @@ fn get_castling_moves(
           True,
           True,
           Ok(board.Occupied(Piece(Black, Rook)))
-        -> [ShortCastle]
-        _, _, _, _ -> []
+        -> [ShortCastle, ..moves]
+        _, _, _, _ -> moves
       }
     White if game.castling.white_kingside ->
       case
@@ -592,10 +615,10 @@ fn get_castling_moves(
           True,
           True,
           Ok(board.Occupied(Piece(White, Rook)))
-        -> [ShortCastle]
-        _, _, _, _ -> []
+        -> [ShortCastle, ..moves]
+        _, _, _, _ -> moves
       }
-    _ -> []
+    _ -> moves
   }
   case game.to_move {
     Black if game.castling.black_queenside ->
@@ -638,21 +661,41 @@ fn get_knight_moves(
   game: Game,
   position: Position,
   attack_information: AttackInformation,
+  moves: List(Move),
 ) -> List(Move) {
   direction.knight_directions
-  |> list.filter_map(fn(direction) {
+  |> list.fold(moves, fn(moves, direction) {
     case maybe_move(game, position, direction, True) {
-      Error(_) -> Error(Nil)
+      Error(_) -> moves
       Ok(move) ->
-        move_if_possible(move, attack_information) |> result.map(Basic)
+        case piece_can_move(move, attack_information) {
+          True -> [Basic(move), ..moves]
+          False -> moves
+        }
     }
   })
+}
+
+fn add_pawn_moves(
+  move: BasicMove,
+  to_move: piece.Colour,
+  moves: List(Move),
+) -> List(Move) {
+  case to_move, move.to.rank {
+    Black, 0 | White, 7 ->
+      piece.promotion_kinds
+      |> list.fold(moves, fn(moves, new_kind) {
+        [Promotion(move:, new_kind:), ..moves]
+      })
+    _, _ -> [Basic(move), ..moves]
+  }
 }
 
 fn get_pawn_moves(
   game: Game,
   position: Position,
   attack_information: AttackInformation,
+  moves: List(Move),
 ) -> List(Move) {
   let #(direction, take_directions) = case game.to_move {
     Black -> #(direction.down, [direction.down_left, direction.down_right])
@@ -666,55 +709,62 @@ fn get_pawn_moves(
 
   let moves =
     take_directions
-    |> list.filter_map(fn(direction) {
-      case direction.in_direction(position, direction) {
-        Error(_) -> Error(Nil)
+    |> list.fold(moves, fn(moves, direction) {
+      let _ = case direction.in_direction(position, direction) {
+        Error(_) -> moves
         Ok(to) ->
           case dict.get(game.board, to) {
-            Error(_) -> Error(Nil)
+            Error(_) -> moves
             Ok(square) ->
               case move_validity(square, game.to_move) {
-                ValidThenStop ->
-                  move_if_possible(
-                    Move(from: position, to:),
-                    attack_information,
-                  )
+                ValidThenStop -> {
+                  let move = Move(from: position, to:)
+                  case piece_can_move(move, attack_information) {
+                    False -> moves
+                    True -> add_pawn_moves(move, game.to_move, moves)
+                  }
+                }
                 Valid ->
-                  check_for_en_passant(game, position, to, attack_information)
-                Invalid -> Error(Nil)
+                  case
+                    check_for_en_passant(game, position, to, attack_information)
+                  {
+                    False -> moves
+                    True ->
+                      add_pawn_moves(
+                        Move(from: position, to:),
+                        game.to_move,
+                        moves,
+                      )
+                  }
+                Invalid -> moves
               }
           }
       }
     })
 
-  let moves = case maybe_move(game, position, direction, False) {
+  case maybe_move(game, position, direction, False) {
     Ok(move) -> {
-      let moves = case move_if_possible(move, attack_information) {
-        Error(_) -> moves
-        Ok(move) -> [move, ..moves]
+      let moves = case piece_can_move(move, attack_information) {
+        False -> moves
+        True -> add_pawn_moves(move, game.to_move, moves)
       }
       case can_double_move {
         False -> moves
         True ->
           case
             maybe_move(game, position, direction.multiply(direction, 2), False)
-            |> result.try(move_if_possible(_, attack_information))
           {
             Error(_) -> moves
-            Ok(move) -> [move, ..moves]
+            Ok(move) ->
+              case piece_can_move(move, attack_information) {
+                False -> moves
+                True -> add_pawn_moves(move, game.to_move, moves)
+              }
           }
       }
     }
     Error(_) -> moves
   }
-
-  list.flat_map(moves, fn(move) {
-    case game.to_move, move.to.rank {
-      Black, 0 | White, 7 ->
-        piece.promotion_kinds |> list.map(Promotion(move, _))
-      _, _ -> [Basic(move)]
-    }
-  })
 }
 
 fn check_for_en_passant(
@@ -722,29 +772,23 @@ fn check_for_en_passant(
   position: Position,
   target: Position,
   attack_information: AttackInformation,
-) -> Result(BasicMove, Nil) {
+) -> Bool {
   case game.en_passant == Some(target) {
-    False -> Error(Nil)
+    False -> False
     True -> {
-      let move = Move(from: position, to: target)
       let captured_pawn = Position(file: target.file, rank: position.rank)
 
-      let valid =
-        case attack_information.in_check {
-          False -> !is_pinned(move.from, move.to, attack_information)
-          True ->
-            list.contains(attack_information.check_block_line, captured_pawn)
-            && !is_pinned(move.from, move.to, attack_information)
-        }
-        && !in_check_after_en_passant(
-          game,
-          position,
-          Position(rank: position.rank, file: target.file),
-        )
-      case valid {
-        True -> Ok(move)
-        False -> Error(Nil)
+      case attack_information.in_check {
+        False -> !is_pinned(position, target, attack_information)
+        True ->
+          list.contains(attack_information.check_block_line, captured_pawn)
+          && !is_pinned(position, target, attack_information)
       }
+      && !in_check_after_en_passant(
+        game,
+        position,
+        Position(rank: position.rank, file: target.file),
+      )
     }
   }
 }
@@ -827,7 +871,7 @@ fn attacks(game: Game) -> List(Position) {
   use positions, position, square <- dict.fold(game.board, [])
   case square {
     board.Occupied(piece) if piece.colour == game.to_move ->
-      list.append(get_attacks_for_piece(game, piece, position), positions)
+      get_attacks_for_piece(game, piece, position, positions)
     _ -> positions
   }
 }
@@ -836,14 +880,23 @@ fn get_attacks_for_piece(
   game: Game,
   piece: piece.Piece,
   position: Position,
+  positions: List(Position),
 ) -> List(Position) {
   case piece.kind {
-    Bishop -> get_sliding_attacks(game, position, direction.bishop_directions)
-    Queen -> get_sliding_attacks(game, position, direction.queen_directions)
-    Rook -> get_sliding_attacks(game, position, direction.rook_directions)
-    King -> get_king_attacks(position)
-    Pawn -> get_pawn_attacks(game, position)
-    Knight -> get_knight_attacks(position)
+    Bishop ->
+      get_sliding_attacks(
+        game,
+        position,
+        direction.bishop_directions,
+        positions,
+      )
+    Queen ->
+      get_sliding_attacks(game, position, direction.queen_directions, positions)
+    Rook ->
+      get_sliding_attacks(game, position, direction.rook_directions, positions)
+    King -> get_king_attacks(position, positions)
+    Pawn -> get_pawn_attacks(game, position, positions)
+    Knight -> get_knight_attacks(position, positions)
   }
 }
 
@@ -851,8 +904,11 @@ fn get_sliding_attacks(
   game: Game,
   position: Position,
   directions: List(Direction),
+  positions: List(Position),
 ) -> List(Position) {
-  list.flat_map(directions, get_sliding_attacks_loop(game, position, _, []))
+  list.fold(directions, positions, fn(positions, direction) {
+    get_sliding_attacks_loop(game, position, direction, positions)
+  })
 }
 
 fn get_sliding_attacks_loop(
@@ -878,22 +934,48 @@ fn get_sliding_attacks_loop(
   }
 }
 
-fn get_king_attacks(position: Position) -> List(Position) {
+fn get_king_attacks(
+  position: Position,
+  positions: List(Position),
+) -> List(Position) {
   direction.queen_directions
-  |> list.filter_map(direction.in_direction(position, _))
+  |> list.fold(positions, fn(positions, direction) {
+    case direction.in_direction(position, direction) {
+      Error(_) -> positions
+      Ok(position) -> [position, ..positions]
+    }
+  })
 }
 
-fn get_knight_attacks(position: Position) -> List(Position) {
+fn get_knight_attacks(
+  position: Position,
+  positions: List(Position),
+) -> List(Position) {
   direction.knight_directions
-  |> list.filter_map(direction.in_direction(position, _))
+  |> list.fold(positions, fn(positions, direction) {
+    case direction.in_direction(position, direction) {
+      Error(_) -> positions
+      Ok(position) -> [position, ..positions]
+    }
+  })
 }
 
-fn get_pawn_attacks(game: Game, position: Position) -> List(Position) {
+fn get_pawn_attacks(
+  game: Game,
+  position: Position,
+  positions: List(Position),
+) -> List(Position) {
   let take_directions = case game.to_move {
     Black -> [direction.down_left, direction.down_right]
     White -> [direction.up_left, direction.up_right]
   }
-  take_directions |> list.filter_map(direction.in_direction(position, _))
+  take_directions
+  |> list.fold(positions, fn(positions, direction) {
+    case direction.in_direction(position, direction) {
+      Error(_) -> positions
+      Ok(position) -> [position, ..positions]
+    }
+  })
 }
 
 pub fn apply(game: Game, move: Move) -> Game {
