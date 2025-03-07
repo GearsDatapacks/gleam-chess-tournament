@@ -69,10 +69,6 @@ fn perft_position3() {
   ])
 }
 
-fn failing_perft_position() {
-  perft_all("8/8/3p4/1Pp4r/1K3R2/6k1/4P1P1/8 w - c6 0 3", [7])
-}
-
 fn perft_position4() {
   perft_all("r3k2r/Pppp1ppp/1b3nbN/nP6/BBP1P3/q4N2/Pp1P2PP/R2Q1RK1 w kq - 0 1", [
     6, 264, 9467, 422_333, 15_833_292,

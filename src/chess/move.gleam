@@ -92,6 +92,16 @@ fn piece_can_move(
   }
 }
 
+fn move_if_possible(
+  move: BasicMove,
+  attack_information: AttackInformation,
+) -> Result(BasicMove, Nil) {
+  case piece_can_move(move, attack_information) {
+    False -> Error(Nil)
+    True -> Ok(move)
+  }
+}
+
 pub fn legal(game: Game) -> List(Move) {
   let attacks =
     attacks(Game(..game, to_move: piece.reverse_colour(game.to_move)))
@@ -468,10 +478,7 @@ fn get_sliding_moves(
   get_sliding_lines(game, position, directions)
   |> list.flat_map(
     list.filter_map(_, fn(move) {
-      case piece_can_move(move, attack_information) {
-        True -> Ok(Basic(move))
-        False -> Error(Nil)
-      }
+      move_if_possible(move, attack_information) |> result.map(Basic)
     }),
   )
 }
@@ -637,10 +644,7 @@ fn get_knight_moves(
     case maybe_move(game, position, direction, True) {
       Error(_) -> Error(Nil)
       Ok(move) ->
-        case piece_can_move(move, attack_information) {
-          True -> Ok(Basic(move))
-          False -> Error(Nil)
-        }
+        move_if_possible(move, attack_information) |> result.map(Basic)
     }
   })
 }
@@ -669,52 +673,80 @@ fn get_pawn_moves(
           case dict.get(game.board, to) {
             Error(_) -> Error(Nil)
             Ok(square) ->
-              case move_validity(square, game.to_move) == ValidThenStop {
-                True -> Ok(Move(from: position, to:))
-                False ->
-                  case game.en_passant == Some(to) {
-                    False -> Error(Nil)
-                    True ->
-                      case
-                        in_check_after_en_passant(
-                          game,
-                          position,
-                          Position(rank: position.rank, file: to.file),
-                        )
-                      {
-                        True -> Error(Nil)
-                        False -> Ok(Move(from: position, to:))
-                      }
-                  }
+              case move_validity(square, game.to_move) {
+                ValidThenStop ->
+                  move_if_possible(
+                    Move(from: position, to:),
+                    attack_information,
+                  )
+                Valid ->
+                  check_for_en_passant(game, position, to, attack_information)
+                Invalid -> Error(Nil)
               }
           }
       }
     })
 
-  let moves = case
-    maybe_move(game, position, direction, False),
-    can_double_move
-  {
-    Ok(move), False -> [move, ..moves]
-    Ok(single_move), True ->
-      case maybe_move(game, position, direction.multiply(direction, 2), False) {
-        Error(_) -> [single_move, ..moves]
-        Ok(double_move) -> [single_move, double_move, ..moves]
+  let moves = case maybe_move(game, position, direction, False) {
+    Ok(move) -> {
+      let moves = case move_if_possible(move, attack_information) {
+        Error(_) -> moves
+        Ok(move) -> [move, ..moves]
       }
-    Error(_), _ -> moves
+      case can_double_move {
+        False -> moves
+        True ->
+          case
+            maybe_move(game, position, direction.multiply(direction, 2), False)
+            |> result.try(move_if_possible(_, attack_information))
+          {
+            Error(_) -> moves
+            Ok(move) -> [move, ..moves]
+          }
+      }
+    }
+    Error(_) -> moves
   }
 
   list.flat_map(moves, fn(move) {
-    case piece_can_move(move, attack_information) {
-      False -> []
-      True ->
-        case game.to_move, move.to.rank {
-          Black, 0 | White, 7 ->
-            piece.promotion_kinds |> list.map(Promotion(move, _))
-          _, _ -> [Basic(move)]
-        }
+    case game.to_move, move.to.rank {
+      Black, 0 | White, 7 ->
+        piece.promotion_kinds |> list.map(Promotion(move, _))
+      _, _ -> [Basic(move)]
     }
   })
+}
+
+fn check_for_en_passant(
+  game: Game,
+  position: Position,
+  target: Position,
+  attack_information: AttackInformation,
+) -> Result(BasicMove, Nil) {
+  case game.en_passant == Some(target) {
+    False -> Error(Nil)
+    True -> {
+      let move = Move(from: position, to: target)
+      let captured_pawn = Position(file: target.file, rank: position.rank)
+
+      let valid =
+        case attack_information.in_check {
+          False -> !is_pinned(move.from, move.to, attack_information)
+          True ->
+            list.contains(attack_information.check_block_line, captured_pawn)
+            && !is_pinned(move.from, move.to, attack_information)
+        }
+        && !in_check_after_en_passant(
+          game,
+          position,
+          Position(rank: position.rank, file: target.file),
+        )
+      case valid {
+        True -> Ok(move)
+        False -> Error(Nil)
+      }
+    }
+  }
 }
 
 type FoundPiece {
