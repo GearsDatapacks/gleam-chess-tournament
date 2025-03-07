@@ -1,4 +1,4 @@
-import chess/board.{type Position}
+import chess/board.{type Position, Position}
 import chess/game.{type Game, Game}
 import chess/move/direction.{type Direction}
 import chess/piece.{Bishop, Black, King, Knight, Pawn, Piece, Queen, Rook, White}
@@ -65,7 +65,7 @@ pub fn legal(game: Game) -> List(Move) {
   let pseudo_legal_moves = pseudo_legal(game, attacks)
 
   let king_position =
-    dict.fold(game.board, board.Position(0, 0), fn(acc, position, square) {
+    dict.fold(game.board, Position(0, 0), fn(acc, position, square) {
       case square {
         board.Occupied(piece.Piece(colour:, kind: piece.King))
           if colour == game.to_move
@@ -482,10 +482,10 @@ fn get_castling_moves(game: Game, attacks: List(Position)) -> List(Move) {
   let moves = case game.to_move {
     Black if game.castling.black_kingside ->
       case
-        dict.get(game.board, board.Position(4, 7)),
-        is_free(board.Position(5, 7)),
-        is_free(board.Position(6, 7)),
-        dict.get(game.board, board.Position(7, 7))
+        dict.get(game.board, Position(4, 7)),
+        is_free(Position(5, 7)),
+        is_free(Position(6, 7)),
+        dict.get(game.board, Position(7, 7))
       {
         Ok(board.Occupied(Piece(Black, King))),
           True,
@@ -496,10 +496,10 @@ fn get_castling_moves(game: Game, attacks: List(Position)) -> List(Move) {
       }
     White if game.castling.white_kingside ->
       case
-        dict.get(game.board, board.Position(4, 0)),
-        is_free(board.Position(5, 0)),
-        is_free(board.Position(6, 0)),
-        dict.get(game.board, board.Position(7, 0))
+        dict.get(game.board, Position(4, 0)),
+        is_free(Position(5, 0)),
+        is_free(Position(6, 0)),
+        dict.get(game.board, Position(7, 0))
       {
         Ok(board.Occupied(Piece(White, King))),
           True,
@@ -513,11 +513,11 @@ fn get_castling_moves(game: Game, attacks: List(Position)) -> List(Move) {
   case game.to_move {
     Black if game.castling.black_queenside ->
       case
-        dict.get(game.board, board.Position(4, 7)),
-        is_free(board.Position(3, 7)),
-        is_free(board.Position(2, 7)),
-        dict.get(game.board, board.Position(1, 7)),
-        dict.get(game.board, board.Position(0, 7))
+        dict.get(game.board, Position(4, 7)),
+        is_free(Position(3, 7)),
+        is_free(Position(2, 7)),
+        dict.get(game.board, Position(1, 7)),
+        dict.get(game.board, Position(0, 7))
       {
         Ok(board.Occupied(Piece(Black, King))),
           True,
@@ -529,11 +529,11 @@ fn get_castling_moves(game: Game, attacks: List(Position)) -> List(Move) {
       }
     White if game.castling.white_queenside ->
       case
-        dict.get(game.board, board.Position(4, 0)),
-        is_free(board.Position(3, 0)),
-        is_free(board.Position(2, 0)),
-        dict.get(game.board, board.Position(1, 0)),
-        dict.get(game.board, board.Position(0, 0))
+        dict.get(game.board, Position(4, 0)),
+        is_free(Position(3, 0)),
+        is_free(Position(2, 0)),
+        dict.get(game.board, Position(1, 0)),
+        dict.get(game.board, Position(0, 0))
       {
         Ok(board.Occupied(Piece(White, King))),
           True,
@@ -574,12 +574,23 @@ fn get_pawn_moves(game: Game, position: Position) -> List(Move) {
           case dict.get(game.board, to) {
             Error(_) -> Error(Nil)
             Ok(square) ->
-              case
-                move_validity(square, game.to_move),
-                game.en_passant == Some(to)
-              {
-                _, True | ValidThenStop, _ -> Ok(Move(from: position, to:))
-                _, _ -> Error(Nil)
+              case move_validity(square, game.to_move) == ValidThenStop {
+                True -> Ok(Move(from: position, to:))
+                False ->
+                  case game.en_passant == Some(to) {
+                    False -> Error(Nil)
+                    True ->
+                      case
+                        in_check_after_en_passant(
+                          game,
+                          position,
+                          Position(rank: position.rank, file: to.file),
+                        )
+                      {
+                        True -> Error(Nil)
+                        False -> Ok(Move(from: position, to:))
+                      }
+                  }
               }
           }
       }
@@ -605,6 +616,80 @@ fn get_pawn_moves(game: Game, position: Position) -> List(Move) {
       _, _ -> [Basic(move)]
     }
   })
+}
+
+type FoundPiece {
+  NoPiece
+  KingPiece
+  EnemyPiece
+  Both
+}
+
+fn sort(a: Position, b: Position) -> #(Position, Position) {
+  case a.file < b.file {
+    True -> #(a, b)
+    False -> #(b, a)
+  }
+}
+
+fn in_check_after_en_passant(
+  game: Game,
+  pawn_position: Position,
+  captured_pawn_position: Position,
+) -> Bool {
+  let #(left_position, right_position) =
+    sort(pawn_position, captured_pawn_position)
+
+  case
+    in_check_after_en_passant_loop(game, left_position, direction.left, NoPiece)
+  {
+    NoPiece | Both -> False
+    found_piece ->
+      in_check_after_en_passant_loop(
+        game,
+        right_position,
+        direction.right,
+        found_piece,
+      )
+      == Both
+  }
+}
+
+fn in_check_after_en_passant_loop(
+  game: Game,
+  position: Position,
+  direction: Direction,
+  found_piece: FoundPiece,
+) -> FoundPiece {
+  case direction.in_direction(position, direction) {
+    Error(_) -> found_piece
+    Ok(new_position) ->
+      case dict.get(game.board, new_position), found_piece {
+        Error(_), _ -> found_piece
+        Ok(board.Empty), _ ->
+          in_check_after_en_passant_loop(
+            game,
+            new_position,
+            direction,
+            found_piece,
+          )
+        Ok(board.Occupied(Piece(kind: King, colour:))), NoPiece
+          if colour == game.to_move
+        -> KingPiece
+        Ok(board.Occupied(Piece(kind: King, colour:))), EnemyPiece
+          if colour == game.to_move
+        -> Both
+        Ok(board.Occupied(Piece(kind: Rook, colour:))), NoPiece
+        | Ok(board.Occupied(Piece(kind: Queen, colour:))), NoPiece
+          if colour != game.to_move
+        -> EnemyPiece
+        Ok(board.Occupied(Piece(kind: Rook, colour:))), KingPiece
+        | Ok(board.Occupied(Piece(kind: Queen, colour:))), KingPiece
+          if colour != game.to_move
+        -> Both
+        Ok(board.Occupied(_)), _ -> found_piece
+      }
+  }
 }
 
 fn attacks(game: Game) -> List(Position) {
@@ -686,28 +771,16 @@ pub fn apply(game: Game, move: Move) -> Game {
       let board = case game.to_move {
         Black ->
           game.board
-          |> dict.insert(board.Position(4, 7), board.Empty)
-          |> dict.insert(
-            board.Position(5, 7),
-            board.Occupied(Piece(Black, Rook)),
-          )
-          |> dict.insert(
-            board.Position(6, 7),
-            board.Occupied(Piece(Black, King)),
-          )
-          |> dict.insert(board.Position(7, 7), board.Empty)
+          |> dict.insert(Position(4, 7), board.Empty)
+          |> dict.insert(Position(5, 7), board.Occupied(Piece(Black, Rook)))
+          |> dict.insert(Position(6, 7), board.Occupied(Piece(Black, King)))
+          |> dict.insert(Position(7, 7), board.Empty)
         White ->
           game.board
-          |> dict.insert(board.Position(4, 0), board.Empty)
-          |> dict.insert(
-            board.Position(5, 0),
-            board.Occupied(Piece(White, Rook)),
-          )
-          |> dict.insert(
-            board.Position(6, 0),
-            board.Occupied(Piece(White, King)),
-          )
-          |> dict.insert(board.Position(7, 0), board.Empty)
+          |> dict.insert(Position(4, 0), board.Empty)
+          |> dict.insert(Position(5, 0), board.Occupied(Piece(White, Rook)))
+          |> dict.insert(Position(6, 0), board.Occupied(Piece(White, King)))
+          |> dict.insert(Position(7, 0), board.Empty)
       }
       let castling = case game.to_move {
         Black ->
@@ -735,30 +808,18 @@ pub fn apply(game: Game, move: Move) -> Game {
       let board = case game.to_move {
         Black ->
           game.board
-          |> dict.insert(board.Position(4, 7), board.Empty)
-          |> dict.insert(
-            board.Position(3, 7),
-            board.Occupied(Piece(Black, Rook)),
-          )
-          |> dict.insert(
-            board.Position(2, 7),
-            board.Occupied(Piece(Black, King)),
-          )
-          |> dict.insert(board.Position(1, 7), board.Empty)
-          |> dict.insert(board.Position(0, 7), board.Empty)
+          |> dict.insert(Position(4, 7), board.Empty)
+          |> dict.insert(Position(3, 7), board.Occupied(Piece(Black, Rook)))
+          |> dict.insert(Position(2, 7), board.Occupied(Piece(Black, King)))
+          |> dict.insert(Position(1, 7), board.Empty)
+          |> dict.insert(Position(0, 7), board.Empty)
         White ->
           game.board
-          |> dict.insert(board.Position(4, 0), board.Empty)
-          |> dict.insert(
-            board.Position(3, 0),
-            board.Occupied(Piece(White, Rook)),
-          )
-          |> dict.insert(
-            board.Position(2, 0),
-            board.Occupied(Piece(White, King)),
-          )
-          |> dict.insert(board.Position(1, 0), board.Empty)
-          |> dict.insert(board.Position(0, 0), board.Empty)
+          |> dict.insert(Position(4, 0), board.Empty)
+          |> dict.insert(Position(3, 0), board.Occupied(Piece(White, Rook)))
+          |> dict.insert(Position(2, 0), board.Occupied(Piece(White, King)))
+          |> dict.insert(Position(1, 0), board.Empty)
+          |> dict.insert(Position(0, 0), board.Empty)
       }
       let castling = case game.to_move {
         Black ->
@@ -833,16 +894,15 @@ fn apply_basic_move(
   }
 
   let en_passant = case was_pawn_move, move.to.rank - move.from.rank {
-    True, 2 -> Some(board.Position(file: move.to.file, rank: move.to.rank - 1))
-    True, -2 -> Some(board.Position(file: move.to.file, rank: move.to.rank + 1))
+    True, 2 -> Some(Position(file: move.to.file, rank: move.to.rank - 1))
+    True, -2 -> Some(Position(file: move.to.file, rank: move.to.rank + 1))
     _, _ -> None
   }
 
   let board = case Some(move.to) == game.en_passant && was_pawn_move {
     False -> board
     True -> {
-      let captured_pawn =
-        board.Position(file: move.to.file, rank: move.from.rank)
+      let captured_pawn = Position(file: move.to.file, rank: move.from.rank)
       dict.insert(board, captured_pawn, board.Empty)
     }
   }
