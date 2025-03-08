@@ -28,14 +28,14 @@ fn handle_request(request: Request) -> Response {
   case wisp.path_segments(request) {
     ["move"] -> handle_move(request)
     ["legal"] -> handle_legal(request)
+    ["dbg_move"] -> handle_dbg_move(request)
     _ -> wisp.ok()
   }
 }
 
 fn move_decoder() {
   use fen <- decode.field("fen", decode.string)
-  use failed_moves <- decode.field("failed_moves", decode.list(decode.string))
-  decode.success(#(fen, failed_moves))
+  decode.success(fen)
 }
 
 fn handle_move(request: Request) -> Response {
@@ -43,10 +43,10 @@ fn handle_move(request: Request) -> Response {
   let decode_result = json.parse(body, move_decoder())
   case decode_result {
     Error(_) -> wisp.bad_request()
-    Ok(move) -> {
-      let move_result = chess.move(move.0, move.1)
+    Ok(fen) -> {
+      let move_result = chess.move(fen)
       case move_result {
-        Ok(move) -> wisp.ok() |> wisp.string_body(move)
+        Ok(move) -> wisp.ok() |> wisp.string_body(move.to_string(move))
         Error(reason) ->
           wisp.internal_server_error() |> wisp.string_body(reason)
       }
@@ -59,13 +59,35 @@ fn handle_legal(request: Request) -> Response {
   let decode_result = json.parse(body, move_decoder())
   case decode_result {
     Error(_) -> wisp.bad_request()
-    Ok(move) -> {
-      wisp.log_info("Getting legal moves for position: " <> move.0)
-      let game = game.from_fen(move.0)
+    Ok(fen) -> {
+      wisp.log_info("Getting legal moves for position: " <> fen)
+      let game = game.from_fen(fen)
       let moves = game |> move.legal |> json.array(move_to_json(game, _))
       wisp.ok()
       |> wisp.string_body(json.to_string(moves))
       |> wisp.set_header("Access-Control-Allow-Origin", "*")
+    }
+  }
+}
+
+fn handle_dbg_move(request: Request) -> Response {
+  use body <- wisp.require_string_body(request)
+  let decode_result = json.parse(body, move_decoder())
+  case decode_result {
+    Error(_) -> wisp.bad_request()
+    Ok(fen) -> {
+      let move_result = chess.move(fen)
+      case move_result {
+        Ok(move) ->
+          wisp.ok()
+          |> wisp.string_body(
+            json.to_string(move_to_json(game.from_fen(fen), move)),
+          )
+          |> wisp.set_header("Access-Control-Allow-Origin", "*")
+        Error(reason) ->
+          wisp.internal_server_error()
+          |> wisp.string_body(reason)
+      }
     }
   }
 }
