@@ -1,12 +1,23 @@
 import chess/piece.{type Piece}
-import gleam/dict.{type Dict}
 import gleam/int
 import gleam/string
+import iv
 
 pub const size = 8
 
 pub type Board =
-  Dict(Position, Square)
+  iv.Array(Square)
+
+pub fn at(board: Board, position: Position) -> Result(Square, Nil) {
+  iv.get(board, position.rank * 8 + position.file)
+}
+
+pub fn set(board: Board, position: Position, square: Square) -> Board {
+  case iv.set(board, position.rank * 8 + position.file, square) {
+    Ok(board) -> board
+    Error(_) -> board
+  }
+}
 
 pub type Square {
   Empty
@@ -50,21 +61,12 @@ pub fn position_from_string(string: String) -> Position {
   Position(file:, rank: rank - 1)
 }
 
-pub fn empty() -> Board {
-  populate_squares(dict.new(), 0, 0)
+pub fn index_to_position(index: Int) -> Position {
+  Position(rank: index / 8, file: index % 8)
 }
 
-fn populate_squares(
-  squares: Dict(Position, Square),
-  file: Int,
-  rank: Int,
-) -> Dict(Position, Square) {
-  let squares = dict.insert(squares, Position(file:, rank:), Empty)
-  case file + 1 >= size, rank + 1 >= size {
-    True, False -> populate_squares(squares, 0, rank + 1)
-    True, True -> squares
-    False, _ -> populate_squares(squares, file + 1, rank)
-  }
+pub fn empty() -> Board {
+  iv.repeat(Empty, size * size)
 }
 
 pub const starting_fen = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
@@ -84,8 +86,7 @@ fn from_fen_loop(fen: String, file: Int, rank: Int, board: Board) -> Board {
           case piece.from_fen(char) {
             Error(_) -> board
             Ok(piece) -> {
-              let board =
-                dict.insert(board, Position(file:, rank:), Occupied(piece))
+              let board = set(board, Position(file:, rank:), Occupied(piece))
               from_fen_loop(fen, file + 1, rank, board)
             }
           }
@@ -118,7 +119,7 @@ fn to_fen_loop(
     True -> #(0, rank - 1)
   }
 
-  case dict.get(board, Position(file:, rank:)) {
+  case at(board, Position(file:, rank:)) {
     Error(_) -> fen
     Ok(Empty) ->
       case next_file == 0 {
