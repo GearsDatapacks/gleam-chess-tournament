@@ -1,3 +1,6 @@
+import gleam/list
+import gleam/order
+
 pub fn contains(list: List(a), value: a) -> Bool {
   case list {
     [] -> False
@@ -78,4 +81,8 @@ pub fn fold(list: List(a), acc: b, f: fn(b, a) -> b) -> b {
     [] -> acc
     [first, ..rest] -> fold(rest, f(acc, first), f)
   }
+}
+
+pub fn sort(list: List(a), compare: fn(a, a) -> order.Order) -> List(a) {
+  list.sort(list, compare)
 }
