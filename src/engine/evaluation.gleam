@@ -19,8 +19,8 @@ pub fn best_move(game: Game) -> Result(Move, Nil) {
     search(
       game,
       search_depth,
-      -1_000_000,
-      1_000_000,
+      -1_000_000_000,
+      1_000_000_000,
       Error(Nil),
       0,
       piece_tables,
@@ -46,7 +46,7 @@ fn search(
   game: Game,
   depth: Int,
   best_eval: Int,
-  beta: Int,
+  best_opponent_move: Int,
   best_move: Result(Move, Nil),
   nodes_searched: Int,
   piece_tables: table.PieceTables,
@@ -59,7 +59,7 @@ fn search(
         order_moves(game, move.legal(game)),
         depth,
         best_eval,
-        beta,
+        best_opponent_move,
         best_move,
         nodes_searched,
         piece_tables,
@@ -98,7 +98,7 @@ fn search_loop(
         // so the other side will not let us get to this position.
         True -> #(best_opponent_move, nodes_searched, best_move)
         False -> {
-          let #(alpha, best_move) = case eval > best_eval {
+          let #(best_eval, best_move) = case eval > best_eval {
             False -> #(best_eval, best_move)
             True -> #(eval, Ok(move))
           }
@@ -106,7 +106,7 @@ fn search_loop(
             game,
             moves,
             depth,
-            alpha,
+            best_eval,
             best_opponent_move,
             best_move,
             nodes_searched,
