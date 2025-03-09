@@ -99,8 +99,29 @@ fn search_loop(
 }
 
 pub fn evaluate(game: Game) -> Int {
-  evaluate_for_colour(game, game.to_move)
-  - evaluate_for_colour(game, piece.reverse_colour(game.to_move))
+  // Fifty move rule
+  case game.half_moves >= 50 {
+    True -> 0
+    False -> {
+      let attack_information = move.attack_information(game)
+      let legal_moves = move.do_legal(game, attack_information)
+
+      case legal_moves {
+        [] ->
+          case attack_information.in_check {
+            // Stalemate
+            False -> 0
+            // Checkmate
+            True -> -1_000_000
+          }
+        _ ->
+          evaluate_for_colour(game, game.to_move)
+          - evaluate_for_colour(game, piece.reverse_colour(game.to_move))
+        // + 10
+        // * list.length(legal_moves)
+      }
+    }
+  }
 }
 
 fn evaluate_for_colour(game: Game, colour: piece.Colour) -> Int {

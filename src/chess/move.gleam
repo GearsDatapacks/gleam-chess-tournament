@@ -60,7 +60,7 @@ pub fn from_string(string: String) -> Move {
   }
 }
 
-type AttackInformation {
+pub type AttackInformation {
   AttackInformation(
     attacks: List(Position),
     in_check: Bool,
@@ -93,7 +93,7 @@ fn piece_can_move(
   }
 }
 
-pub fn legal(game: Game) -> List(Move) {
+pub fn attack_information(game: Game) -> AttackInformation {
   let attacks =
     attacks(Game(..game, to_move: piece.reverse_colour(game.to_move)))
 
@@ -125,16 +125,17 @@ pub fn legal(game: Game) -> List(Move) {
 
   let pin_lines = get_pin_lines(game)
 
-  let attack_information =
-    AttackInformation(
-      attacks:,
-      in_check:,
-      check_attack_lines:,
-      check_block_line:,
-      pin_lines:,
-    )
+  AttackInformation(
+    attacks:,
+    in_check:,
+    check_attack_lines:,
+    check_block_line:,
+    pin_lines:,
+  )
+}
 
-  do_legal(game, attack_information)
+pub fn legal(game: Game) -> List(Move) {
+  do_legal(game, attack_information(game))
 }
 
 fn get_check_attack_lines(game: Game) -> List(List(Position)) {
@@ -366,7 +367,7 @@ fn get_check_block_line(game: Game, king_position: Position) -> CheckLine {
   }
 }
 
-fn do_legal(game: Game, attack_information: AttackInformation) -> List(Move) {
+pub fn do_legal(game: Game, attack_information: AttackInformation) -> List(Move) {
   use moves, square, index <- iv.index_fold(game.board, [])
   let position = board.index_to_position(index)
   case square {

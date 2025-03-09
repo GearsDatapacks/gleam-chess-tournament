@@ -86,3 +86,14 @@ pub fn fold(list: List(a), acc: b, f: fn(b, a) -> b) -> b {
 pub fn sort(list: List(a), compare: fn(a, a) -> order.Order) -> List(a) {
   list.sort(list, compare)
 }
+
+pub fn length(list: List(a)) -> Int {
+  do_length(list, 0)
+}
+
+fn do_length(list: List(a), count: Int) -> Int {
+  case list {
+    [] -> count
+    [_, ..list] -> do_length(list, count + 1)
+  }
+}
