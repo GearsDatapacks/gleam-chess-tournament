@@ -2,6 +2,7 @@ import chess/board
 import chess/game.{type Game}
 import chess/move.{type Move}
 import chess/piece
+import engine/table
 import gleam/int
 import gleam/option.{None, Some}
 import gleam/pair
@@ -11,19 +12,33 @@ import wisp
 
 const search_depth = 5
 
-pub fn best_move(game: Game) -> Move {
+pub fn best_move(game: Game) -> Result(Move, Nil) {
+  let piece_tables = table.construct_tables()
   wisp.log_info("Finding best move for: " <> game.to_fen(game))
   let #(eval, nodes_searched, move) =
-    search(game, search_depth, -1_000_000, 1_000_000, move.LongCastle, 0)
-  wisp.log_info(
-    "Best move "
-    <> move.to_string(move)
-    <> ", with score "
-    <> int.to_string(eval)
-    <> ", searched "
-    <> int.to_string(nodes_searched)
-    <> " positions",
-  )
+    search(
+      game,
+      search_depth,
+      -1_000_000,
+      1_000_000,
+      Error(Nil),
+      0,
+      piece_tables,
+    )
+  case move {
+    Ok(move) ->
+      wisp.log_info(
+        "Best move "
+        <> move.to_string(move)
+        <> ", with score "
+        <> int.to_string(eval)
+        <> ", searched "
+        <> int.to_string(nodes_searched)
+        <> " positions",
+      )
+    Error(_) -> wisp.log_info("No legal moves found")
+  }
+
   move
 }
 
@@ -32,11 +47,12 @@ fn search(
   depth: Int,
   best_eval: Int,
   beta: Int,
-  best_move: Move,
+  best_move: Result(Move, Nil),
   nodes_searched: Int,
-) -> #(Int, Int, Move) {
+  piece_tables: table.PieceTables,
+) -> #(Int, Int, Result(Move, Nil)) {
   case depth {
-    0 -> #(evaluate(game), nodes_searched + 1, best_move)
+    0 -> #(evaluate(game, piece_tables), nodes_searched + 1, best_move)
     _ -> {
       search_loop(
         game,
@@ -46,6 +62,7 @@ fn search(
         beta,
         best_move,
         nodes_searched,
+        piece_tables,
       )
     }
   }
@@ -57,9 +74,10 @@ fn search_loop(
   depth: Int,
   best_eval: Int,
   best_opponent_move: Int,
-  best_move: Move,
+  best_move: Result(Move, Nil),
   nodes_searched: Int,
-) -> #(Int, Int, Move) {
+  piece_tables: table.PieceTables,
+) -> #(Int, Int, Result(Move, Nil)) {
   case moves {
     [] -> #(best_eval, nodes_searched, best_move)
     [move, ..moves] -> {
@@ -71,6 +89,7 @@ fn search_loop(
           -best_eval,
           best_move,
           nodes_searched,
+          piece_tables,
         )
       let eval = -eval
 
@@ -81,7 +100,7 @@ fn search_loop(
         False -> {
           let #(alpha, best_move) = case eval > best_eval {
             False -> #(best_eval, best_move)
-            True -> #(eval, move)
+            True -> #(eval, Ok(move))
           }
           search_loop(
             game,
@@ -91,6 +110,7 @@ fn search_loop(
             best_opponent_move,
             best_move,
             nodes_searched,
+            piece_tables,
           )
         }
       }
@@ -98,7 +118,7 @@ fn search_loop(
   }
 }
 
-pub fn evaluate(game: Game) -> Int {
+pub fn evaluate(game: Game, piece_tables: table.PieceTables) -> Int {
   // Fifty move rule
   case game.half_moves >= 50 {
     True -> 0
@@ -115,8 +135,12 @@ pub fn evaluate(game: Game) -> Int {
             True -> -1_000_000
           }
         _ ->
-          evaluate_for_colour(game, game.to_move)
-          - evaluate_for_colour(game, piece.reverse_colour(game.to_move))
+          evaluate_for_colour(game, game.to_move, piece_tables)
+          - evaluate_for_colour(
+            game,
+            piece.reverse_colour(game.to_move),
+            piece_tables,
+          )
         // + 10
         // * list.length(legal_moves)
       }
@@ -124,11 +148,17 @@ pub fn evaluate(game: Game) -> Int {
   }
 }
 
-fn evaluate_for_colour(game: Game, colour: piece.Colour) -> Int {
-  use eval, square <- iv.fold(game.board, 0)
+fn evaluate_for_colour(
+  game: Game,
+  colour: piece.Colour,
+  piece_tables: table.PieceTables,
+) -> Int {
+  use eval, square, index <- iv.index_fold(game.board, 0)
   case square {
     board.Occupied(piece) if piece.colour == colour ->
-      eval + piece_score(piece.kind)
+      eval
+      + piece_score(piece.kind)
+      + table.piece_score(piece_tables, piece, index)
     _ -> eval
   }
 }

@@ -65,6 +65,10 @@ pub fn index_to_position(index: Int) -> Position {
   Position(rank: index / 8, file: index % 8)
 }
 
+pub fn position_to_index(position: Position) -> Int {
+  position.rank * 8 + position.file
+}
+
 pub fn empty() -> Board {
   iv.repeat(Empty, size * size)
 }
