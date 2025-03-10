@@ -2,7 +2,9 @@ import chess/board
 import chess/game.{type Game}
 import chess/move.{type Move}
 import chess/piece
+import engine/hash
 import engine/table
+import gleam/dict
 import gleam/int
 import gleam/option.{None, Some}
 import gleam/pair
@@ -13,9 +15,8 @@ import wisp
 const search_depth = 5
 
 pub fn best_move(game: Game) -> Result(Move, Nil) {
-  let piece_tables = table.construct_tables()
   wisp.log_info("Finding best move for: " <> game.to_fen(game))
-  let #(eval, nodes_searched, move) =
+  let SearchResult(eval:, nodes_searched:, cache_hits:, best_move: move, ..) =
     search(
       game,
       search_depth,
@@ -23,7 +24,12 @@ pub fn best_move(game: Game) -> Result(Move, Nil) {
       1_000_000_000,
       Error(Nil),
       0,
-      piece_tables,
+      0,
+      SearchData(
+        piece_tables: table.construct_tables(),
+        hash_data: hash.generate_data(),
+        cached_positions: dict.new(),
+      ),
     )
   case move {
     Ok(move) ->
@@ -34,12 +40,32 @@ pub fn best_move(game: Game) -> Result(Move, Nil) {
         <> int.to_string(eval)
         <> ", searched "
         <> int.to_string(nodes_searched)
-        <> " positions",
+        <> " positions, with "
+        <> int.to_string(cache_hits)
+        <> " cache hits.",
       )
     Error(_) -> wisp.log_info("No legal moves found")
   }
 
   move
+}
+
+type SearchResult {
+  SearchResult(
+    eval: Int,
+    nodes_searched: Int,
+    cache_hits: Int,
+    best_move: Result(Move, Nil),
+    cached_positions: dict.Dict(Int, Int),
+  )
+}
+
+type SearchData {
+  SearchData(
+    piece_tables: table.PieceTables,
+    hash_data: hash.HashData,
+    cached_positions: dict.Dict(Int, Int),
+  )
 }
 
 fn search(
@@ -49,11 +75,36 @@ fn search(
   best_opponent_move: Int,
   best_move: Result(Move, Nil),
   nodes_searched: Int,
-  piece_tables: table.PieceTables,
-) -> #(Int, Int, Result(Move, Nil)) {
+  cache_hits: Int,
+  data: SearchData,
+) -> SearchResult {
   case depth {
-    0 -> #(evaluate(game, piece_tables), nodes_searched + 1, best_move)
-    _ -> {
+    0 -> {
+      let hash = hash.hash_position(game, data.hash_data)
+      case dict.get(data.cached_positions, hash) {
+        Ok(eval) ->
+          SearchResult(
+            eval,
+            nodes_searched,
+            cache_hits + 1,
+            best_move,
+            data.cached_positions,
+          )
+        Error(_) -> {
+          let eval = evaluate(game, data.piece_tables)
+          SearchResult(
+            eval,
+            nodes_searched + 1,
+            cache_hits,
+            best_move,
+            dict.insert(data.cached_positions, hash, eval),
+          )
+        }
+      }
+    }
+    // TODO: Cache eval when searching higher than depth 1 (currently
+    // this only makes the program slower or worse at evaluation).
+    _ ->
       search_loop(
         game,
         order_moves(game, move.legal(game)),
@@ -62,9 +113,9 @@ fn search(
         best_opponent_move,
         best_move,
         nodes_searched,
-        piece_tables,
+        cache_hits,
+        data,
       )
-    }
   }
 }
 
@@ -76,12 +127,20 @@ fn search_loop(
   best_opponent_move: Int,
   best_move: Result(Move, Nil),
   nodes_searched: Int,
-  piece_tables: table.PieceTables,
-) -> #(Int, Int, Result(Move, Nil)) {
+  cache_hits: Int,
+  data: SearchData,
+) -> SearchResult {
   case moves {
-    [] -> #(best_eval, nodes_searched, best_move)
+    [] ->
+      SearchResult(
+        best_eval,
+        nodes_searched,
+        cache_hits,
+        best_move,
+        data.cached_positions,
+      )
     [move, ..moves] -> {
-      let #(eval, nodes_searched, _) =
+      let SearchResult(eval, nodes_searched, cache_hits, _, cached_positions) =
         search(
           move.apply(game, move),
           depth - 1,
@@ -89,14 +148,22 @@ fn search_loop(
           -best_eval,
           best_move,
           nodes_searched,
-          piece_tables,
+          cache_hits,
+          data,
         )
       let eval = -eval
 
       case eval >= best_opponent_move {
         // This move is worse for our opponent than another possible move,
         // so the other side will not let us get to this position.
-        True -> #(best_opponent_move, nodes_searched, best_move)
+        True ->
+          SearchResult(
+            best_opponent_move,
+            nodes_searched,
+            cache_hits,
+            best_move,
+            cached_positions,
+          )
         False -> {
           let #(best_eval, best_move) = case eval > best_eval {
             False -> #(best_eval, best_move)
@@ -110,7 +177,8 @@ fn search_loop(
             best_opponent_move,
             best_move,
             nodes_searched,
-            piece_tables,
+            cache_hits,
+            SearchData(..data, cached_positions:),
           )
         }
       }
