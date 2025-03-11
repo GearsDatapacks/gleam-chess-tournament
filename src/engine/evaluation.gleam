@@ -104,18 +104,40 @@ fn search(
     }
     // TODO: Cache eval when searching higher than depth 1 (currently
     // this only makes the program slower or worse at evaluation).
-    _ ->
-      search_loop(
-        game,
-        order_moves(game, move.legal(game)),
-        depth,
-        best_eval,
-        best_opponent_move,
-        best_move,
-        nodes_searched,
-        cache_hits,
-        data,
-      )
+    _ -> {
+      let attack_information = move.attack_information(game)
+      let legal_moves = move.do_legal(game, attack_information)
+
+      case legal_moves {
+        [] -> {
+          let eval = case attack_information.in_check {
+            // Stalemate
+            False -> 0
+            // Checkmate
+            True -> -1_000_000
+          }
+          SearchResult(
+            eval,
+            nodes_searched,
+            cache_hits,
+            Error(Nil),
+            data.cached_positions,
+          )
+        }
+        moves ->
+          search_loop(
+            game,
+            order_moves(game, moves),
+            depth,
+            best_eval,
+            best_opponent_move,
+            best_move,
+            nodes_searched,
+            cache_hits,
+            data,
+          )
+      }
+    }
   }
 }
 
