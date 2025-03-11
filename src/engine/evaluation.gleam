@@ -261,8 +261,8 @@ fn guess_eval(game: Game, full_move: Move) -> Int {
       let guess = 0
 
       let guess = case
-        board.at(game.board, move.from),
-        board.at(game.board, move.to)
+        iv.get(game.board, move.from),
+        iv.get(game.board, move.to)
       {
         Ok(board.Occupied(moving_piece)), Ok(board.Occupied(captured_piece)) ->
           guess

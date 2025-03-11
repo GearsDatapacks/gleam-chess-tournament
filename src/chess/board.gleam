@@ -8,12 +8,8 @@ pub const size = 8
 pub type Board =
   iv.Array(Square)
 
-pub fn at(board: Board, position: Position) -> Result(Square, Nil) {
-  iv.get(board, position.rank * 8 + position.file)
-}
-
 pub fn set(board: Board, position: Position, square: Square) -> Board {
-  case iv.set(board, position.rank * 8 + position.file, square) {
+  case iv.set(board, position, square) {
     Ok(board) -> board
     Error(_) -> board
   }
@@ -24,12 +20,15 @@ pub type Square {
   Occupied(Piece)
 }
 
-pub type Position {
-  Position(file: Int, rank: Int)
-}
+/// file = position % 8
+/// rank = position / 8
+/// To construct:
+/// position = rank * 8 + file
+pub type Position =
+  Int
 
 pub fn position_to_string(position: Position) -> String {
-  let file = case position.file {
+  let file = case position % 8 {
     0 -> "a"
     1 -> "b"
     2 -> "c"
@@ -41,7 +40,7 @@ pub fn position_to_string(position: Position) -> String {
     _ -> "a"
   }
 
-  file <> int.to_string(position.rank + 1)
+  file <> int.to_string(position / 8 + 1)
 }
 
 pub fn position_from_string(string: String) -> Position {
@@ -58,15 +57,7 @@ pub fn position_from_string(string: String) -> Position {
     _ -> 0
   }
   let assert Ok(rank) = int.parse(rank)
-  Position(file:, rank: rank - 1)
-}
-
-pub fn index_to_position(index: Int) -> Position {
-  Position(rank: index / 8, file: index % 8)
-}
-
-pub fn position_to_index(position: Position) -> Int {
-  position.rank * 8 + position.file
+  rank * 8 + file - 8
 }
 
 pub fn empty() -> Board {
@@ -90,7 +81,7 @@ fn from_fen_loop(fen: String, file: Int, rank: Int, board: Board) -> Board {
           case piece.from_fen(char) {
             Error(_) -> board
             Ok(piece) -> {
-              let board = set(board, Position(file:, rank:), Occupied(piece))
+              let board = set(board, rank * 8 + file, Occupied(piece))
               from_fen_loop(fen, file + 1, rank, board)
             }
           }
@@ -123,7 +114,7 @@ fn to_fen_loop(
     True -> #(0, rank - 1)
   }
 
-  case at(board, Position(file:, rank:)) {
+  case iv.get(board, rank * 8 + file) {
     Error(_) -> fen
     Ok(Empty) ->
       case next_file == 0 {

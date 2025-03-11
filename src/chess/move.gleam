@@ -1,4 +1,4 @@
-import chess/board.{type Position, Position}
+import chess/board.{type Position}
 import chess/game.{type Game, Game}
 import chess/move/direction.{type Direction}
 import chess/piece.{Bishop, Black, King, Knight, Pawn, Piece, Queen, Rook, White}
@@ -98,8 +98,7 @@ pub fn attack_information(game: Game) -> AttackInformation {
     attacks(Game(..game, to_move: piece.reverse_colour(game.to_move)))
 
   let king_position =
-    iv.index_fold(game.board, Position(0, 0), fn(acc, square, index) {
-      let position = board.index_to_position(index)
+    iv.index_fold(game.board, 0, fn(acc, square, position) {
       case square {
         board.Occupied(piece.Piece(colour:, kind: piece.King))
           if colour == game.to_move
@@ -139,8 +138,8 @@ pub fn legal(game: Game) -> List(Move) {
 }
 
 fn get_check_attack_lines(game: Game) -> List(List(Position)) {
-  use lines, square, index <- iv.index_fold(game.board, [])
-  let position = board.index_to_position(index)
+  use lines, square, position <- iv.index_fold(game.board, [])
+
   case square {
     board.Occupied(piece) if piece.colour != game.to_move ->
       case piece.kind {
@@ -196,7 +195,7 @@ fn get_sliding_check_moves_loop(
     Error(_) if found_king -> Ok(squares)
     Error(_) -> Error(Nil)
     Ok(new_position) ->
-      case board.at(game.board, new_position) {
+      case iv.get(game.board, new_position) {
         Ok(board.Empty) ->
           get_sliding_check_moves_loop(
             game,
@@ -224,8 +223,8 @@ fn get_sliding_check_moves_loop(
 }
 
 fn get_pin_lines(game: Game) -> dict.Dict(Position, List(Position)) {
-  use lines, square, index <- iv.index_fold(game.board, dict.new())
-  let position = board.index_to_position(index)
+  use lines, square, position <- iv.index_fold(game.board, dict.new())
+
   case square {
     board.Occupied(piece) if piece.colour != game.to_move ->
       case piece.kind {
@@ -280,7 +279,7 @@ fn get_sliding_pin_moves_loop(
   case direction.in_direction(position, direction), pinned_piece {
     Error(_), _ -> Error(Nil)
     Ok(new_position), _ ->
-      case board.at(game.board, new_position), pinned_piece {
+      case iv.get(game.board, new_position), pinned_piece {
         Ok(board.Empty), _ ->
           get_sliding_pin_moves_loop(
             game,
@@ -314,8 +313,8 @@ type CheckLine {
 
 fn get_check_block_line(game: Game, king_position: Position) -> CheckLine {
   let game = Game(..game, to_move: piece.reverse_colour(game.to_move))
-  use line, square, index <- iv.index_fold(game.board, NoLine)
-  let position = board.index_to_position(index)
+  use line, square, position <- iv.index_fold(game.board, NoLine)
+
   case square {
     board.Occupied(piece) if piece.colour == game.to_move ->
       case piece.kind {
@@ -368,8 +367,8 @@ fn get_check_block_line(game: Game, king_position: Position) -> CheckLine {
 }
 
 pub fn do_legal(game: Game, attack_information: AttackInformation) -> List(Move) {
-  use moves, square, index <- iv.index_fold(game.board, [])
-  let position = board.index_to_position(index)
+  use moves, square, position <- iv.index_fold(game.board, [])
+
   case square {
     board.Occupied(piece) if piece.colour == game.to_move ->
       get_moves_for_piece(game, attack_information, piece, position, moves)
@@ -438,7 +437,7 @@ fn maybe_move(
   case direction.in_direction(from, direction) {
     Error(_) -> Error(Nil)
     Ok(to) ->
-      case board.at(game.board, to) {
+      case iv.get(game.board, to) {
         Error(_) -> Error(Nil)
         Ok(square) ->
           case move_validity(square, game.to_move) {
@@ -482,7 +481,7 @@ fn get_sliding_moves_loop(
     Error(_) -> moves
     Ok(new_position) ->
       case
-        board.at(game.board, new_position)
+        iv.get(game.board, new_position)
         |> result.map(move_validity(_, game.to_move))
       {
         Error(_) | Ok(Invalid) -> moves
@@ -531,7 +530,7 @@ fn get_sliding_lines_loop(
     Error(_) -> moves
     Ok(new_position) ->
       case
-        board.at(game.board, new_position)
+        iv.get(game.board, new_position)
         |> result.map(move_validity(_, game.to_move))
       {
         Error(_) | Ok(Invalid) -> moves
@@ -590,7 +589,7 @@ fn get_castling_moves(
   moves: List(Move),
 ) -> List(Move) {
   let is_free = fn(position) {
-    case board.at(game.board, position) {
+    case iv.get(game.board, position) {
       Ok(board.Empty) -> !list.contains(attack_information.attacks, position)
       _ -> False
     }
@@ -599,10 +598,10 @@ fn get_castling_moves(
   let moves = case game.to_move {
     Black if game.castling.black_kingside ->
       case
-        board.at(game.board, Position(4, 7)),
-        is_free(Position(5, 7)),
-        is_free(Position(6, 7)),
-        board.at(game.board, Position(7, 7))
+        iv.get(game.board, 60),
+        is_free(61),
+        is_free(62),
+        iv.get(game.board, 63)
       {
         Ok(board.Occupied(Piece(Black, King))),
           True,
@@ -613,10 +612,10 @@ fn get_castling_moves(
       }
     White if game.castling.white_kingside ->
       case
-        board.at(game.board, Position(4, 0)),
-        is_free(Position(5, 0)),
-        is_free(Position(6, 0)),
-        board.at(game.board, Position(7, 0))
+        iv.get(game.board, 4),
+        is_free(5),
+        is_free(6),
+        iv.get(game.board, 7)
       {
         Ok(board.Occupied(Piece(White, King))),
           True,
@@ -630,11 +629,11 @@ fn get_castling_moves(
   case game.to_move {
     Black if game.castling.black_queenside ->
       case
-        board.at(game.board, Position(4, 7)),
-        is_free(Position(3, 7)),
-        is_free(Position(2, 7)),
-        board.at(game.board, Position(1, 7)),
-        board.at(game.board, Position(0, 7))
+        iv.get(game.board, 60),
+        is_free(59),
+        is_free(58),
+        iv.get(game.board, 57),
+        iv.get(game.board, 56)
       {
         Ok(board.Occupied(Piece(Black, King))),
           True,
@@ -646,11 +645,11 @@ fn get_castling_moves(
       }
     White if game.castling.white_queenside ->
       case
-        board.at(game.board, Position(4, 0)),
-        is_free(Position(3, 0)),
-        is_free(Position(2, 0)),
-        board.at(game.board, Position(1, 0)),
-        board.at(game.board, Position(0, 0))
+        iv.get(game.board, 4),
+        is_free(3),
+        is_free(2),
+        iv.get(game.board, 1),
+        iv.get(game.board, 0)
       {
         Ok(board.Occupied(Piece(White, King))),
           True,
@@ -688,7 +687,7 @@ fn add_pawn_moves(
   to_move: piece.Colour,
   moves: List(Move),
 ) -> List(Move) {
-  case to_move, move.to.rank {
+  case to_move, move.to / 8 {
     Black, 0 | White, 7 ->
       piece.promotion_kinds
       |> list.fold(moves, fn(moves, new_kind) {
@@ -709,7 +708,7 @@ fn get_pawn_moves(
     White -> #(direction.up, [direction.up_left, direction.up_right])
   }
 
-  let can_double_move = case game.to_move, position.rank {
+  let can_double_move = case game.to_move, position / 8 {
     Black, 6 | White, 1 -> True
     _, _ -> False
   }
@@ -720,7 +719,7 @@ fn get_pawn_moves(
       let _ = case direction.in_direction(position, direction) {
         Error(_) -> moves
         Ok(to) ->
-          case board.at(game.board, to) {
+          case iv.get(game.board, to) {
             Error(_) -> moves
             Ok(square) ->
               case move_validity(square, game.to_move) {
@@ -783,7 +782,7 @@ fn check_for_en_passant(
   case game.en_passant == Some(target) {
     False -> False
     True -> {
-      let captured_pawn = Position(file: target.file, rank: position.rank)
+      let captured_pawn = position / 8 * 8 + target % 8
 
       case attack_information.in_check {
         False -> !is_pinned(position, target, attack_information)
@@ -794,7 +793,7 @@ fn check_for_en_passant(
       && !in_check_after_en_passant(
         game,
         position,
-        Position(rank: position.rank, file: target.file),
+        position / 8 * 8 + target % 8,
       )
     }
   }
@@ -808,7 +807,7 @@ type FoundPiece {
 }
 
 fn sort(a: Position, b: Position) -> #(Position, Position) {
-  case a.file < b.file {
+  case a % 8 < b % 8 {
     True -> #(a, b)
     False -> #(b, a)
   }
@@ -846,7 +845,7 @@ fn in_check_after_en_passant_loop(
   case direction.in_direction(position, direction) {
     Error(_) -> found_piece
     Ok(new_position) ->
-      case board.at(game.board, new_position), found_piece {
+      case iv.get(game.board, new_position), found_piece {
         Error(_), _ -> found_piece
         Ok(board.Empty), _ ->
           in_check_after_en_passant_loop(
@@ -875,8 +874,8 @@ fn in_check_after_en_passant_loop(
 }
 
 fn attacks(game: Game) -> List(Position) {
-  use positions, square, index <- iv.index_fold(game.board, [])
-  let position = board.index_to_position(index)
+  use positions, square, position <- iv.index_fold(game.board, [])
+
   case square {
     board.Occupied(piece) if piece.colour == game.to_move ->
       get_attacks_for_piece(game, piece, position, positions)
@@ -929,7 +928,7 @@ fn get_sliding_attacks_loop(
     Error(_) -> positions
     Ok(new_position) ->
       case
-        board.at(game.board, new_position)
+        iv.get(game.board, new_position)
         |> result.map(move_validity(_, game.to_move))
       {
         Ok(Valid) ->
@@ -992,16 +991,16 @@ pub fn apply(game: Game, move: Move) -> Game {
       let board = case game.to_move {
         Black ->
           game.board
-          |> board.set(Position(4, 7), board.Empty)
-          |> board.set(Position(5, 7), board.Occupied(Piece(Black, Rook)))
-          |> board.set(Position(6, 7), board.Occupied(Piece(Black, King)))
-          |> board.set(Position(7, 7), board.Empty)
+          |> board.set(60, board.Empty)
+          |> board.set(61, board.Occupied(Piece(Black, Rook)))
+          |> board.set(62, board.Occupied(Piece(Black, King)))
+          |> board.set(63, board.Empty)
         White ->
           game.board
-          |> board.set(Position(4, 0), board.Empty)
-          |> board.set(Position(5, 0), board.Occupied(Piece(White, Rook)))
-          |> board.set(Position(6, 0), board.Occupied(Piece(White, King)))
-          |> board.set(Position(7, 0), board.Empty)
+          |> board.set(4, board.Empty)
+          |> board.set(5, board.Occupied(Piece(White, Rook)))
+          |> board.set(6, board.Occupied(Piece(White, King)))
+          |> board.set(7, board.Empty)
       }
       let castling = case game.to_move {
         Black ->
@@ -1029,18 +1028,18 @@ pub fn apply(game: Game, move: Move) -> Game {
       let board = case game.to_move {
         Black ->
           game.board
-          |> board.set(Position(4, 7), board.Empty)
-          |> board.set(Position(3, 7), board.Occupied(Piece(Black, Rook)))
-          |> board.set(Position(2, 7), board.Occupied(Piece(Black, King)))
-          |> board.set(Position(1, 7), board.Empty)
-          |> board.set(Position(0, 7), board.Empty)
+          |> board.set(60, board.Empty)
+          |> board.set(59, board.Occupied(Piece(Black, Rook)))
+          |> board.set(58, board.Occupied(Piece(Black, King)))
+          |> board.set(57, board.Empty)
+          |> board.set(56, board.Empty)
         White ->
           game.board
-          |> board.set(Position(4, 0), board.Empty)
-          |> board.set(Position(3, 0), board.Occupied(Piece(White, Rook)))
-          |> board.set(Position(2, 0), board.Occupied(Piece(White, King)))
-          |> board.set(Position(1, 0), board.Empty)
-          |> board.set(Position(0, 0), board.Empty)
+          |> board.set(4, board.Empty)
+          |> board.set(3, board.Occupied(Piece(White, Rook)))
+          |> board.set(2, board.Occupied(Piece(White, King)))
+          |> board.set(1, board.Empty)
+          |> board.set(0, board.Empty)
       }
       let castling = case game.to_move {
         Black ->
@@ -1081,8 +1080,8 @@ fn apply_basic_move(
   move: BasicMove,
   new_kind: Option(piece.Kind),
 ) -> Game {
-  let newly_occupied = board.at(game.board, move.to)
-  let #(board, moved_piece) = case board.at(game.board, move.from) {
+  let newly_occupied = iv.get(game.board, move.to)
+  let #(board, moved_piece) = case iv.get(game.board, move.from) {
     Error(_) -> #(game.board, board.Empty)
     Ok(square) -> {
       let square = case square, new_kind {
@@ -1114,21 +1113,21 @@ fn apply_basic_move(
     True -> 0
   }
 
-  let en_passant = case was_pawn_move, move.to.rank - move.from.rank {
-    True, 2 -> Some(Position(file: move.to.file, rank: move.to.rank - 1))
-    True, -2 -> Some(Position(file: move.to.file, rank: move.to.rank + 1))
+  let en_passant = case was_pawn_move, move.to / 8 - move.from / 8 {
+    True, 2 -> Some(move.to - 8)
+    True, -2 -> Some(move.to + 8)
     _, _ -> None
   }
 
   let board = case Some(move.to) == game.en_passant && was_pawn_move {
     False -> board
     True -> {
-      let captured_pawn = Position(file: move.to.file, rank: move.from.rank)
+      let captured_pawn = move.from / 8 * 8 + move.to % 8
       board.set(board, captured_pawn, board.Empty)
     }
   }
 
-  let castling = case moved_piece, move.from.file {
+  let castling = case moved_piece, move.from % 8 {
     board.Occupied(Piece(White, piece.King)), _ ->
       game.Castling(
         ..game.castling,

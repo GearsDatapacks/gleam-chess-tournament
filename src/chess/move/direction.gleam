@@ -9,12 +9,12 @@ pub fn in_direction(
   direction: Direction,
 ) -> Result(Position, Nil) {
   case
-    position.file + direction.file_change,
-    position.rank + direction.rank_change
+    position % 8 + direction.file_change,
+    position / 8 + direction.rank_change
   {
     file, rank if file < 0 || rank < 0 -> Error(Nil)
     file, rank if file >= board.size || rank >= board.size -> Error(Nil)
-    file, rank -> Ok(board.Position(file:, rank:))
+    file, rank -> Ok(rank * 8 + file)
   }
 }
 

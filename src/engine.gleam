@@ -101,15 +101,15 @@ fn move_to_json(game: game.Game, move: move.Move) -> json.Json {
         #(
           "from",
           json.object([
-            #("file", json.int(move.from.file)),
-            #("rank", json.int(move.from.rank)),
+            #("file", json.int(move.from % 8)),
+            #("rank", json.int(move.from / 8)),
           ]),
         ),
         #(
           "to",
           json.object([
-            #("file", json.int(move.to.file)),
-            #("rank", json.int(move.to.rank)),
+            #("file", json.int(move.to % 8)),
+            #("rank", json.int(move.to / 8)),
           ]),
         ),
         #("fen", json.string(fen)),
