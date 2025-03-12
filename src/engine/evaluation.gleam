@@ -29,6 +29,7 @@ pub fn best_move(game: Game) -> Result(Move, Nil) {
         piece_tables: table.construct_tables(),
         hash_data: hash.generate_data(),
         cached_positions: dict.new(),
+        depth_searched: 0,
       ),
     )
   case move {
@@ -66,6 +67,7 @@ type SearchData {
     piece_tables: table.PieceTables,
     hash_data: hash.HashData,
     cached_positions: hash.Cache,
+    depth_searched: Int,
   )
 }
 
@@ -95,7 +97,7 @@ fn search(
     Error(_) ->
       case depth {
         0 -> {
-          let eval = evaluate(game, data.piece_tables)
+          let eval = evaluate(game, data.piece_tables, data.depth_searched)
           SearchResult(
             eval,
             nodes_searched + 1,
@@ -119,7 +121,7 @@ fn search(
                 // Stalemate
                 False -> 0
                 // Checkmate
-                True -> -1_000_000
+                True -> -1_000_000 + data.depth_searched
               }
               SearchResult(
                 eval,
@@ -206,7 +208,7 @@ fn search_loop(
           best_move,
           nodes_searched,
           cache_hits,
-          data,
+          SearchData(..data, depth_searched: data.depth_searched + 1),
         )
       let eval = -eval
 
@@ -245,7 +247,11 @@ fn search_loop(
   }
 }
 
-pub fn evaluate(game: Game, piece_tables: table.PieceTables) -> Int {
+pub fn evaluate(
+  game: Game,
+  piece_tables: table.PieceTables,
+  depth_searched: Int,
+) -> Int {
   // Fifty move rule
   case game.half_moves >= 50 {
     True -> 0
@@ -259,7 +265,7 @@ pub fn evaluate(game: Game, piece_tables: table.PieceTables) -> Int {
             // Stalemate
             False -> 0
             // Checkmate
-            True -> -1_000_000
+            True -> -1_000_000 + depth_searched
           }
         _ ->
           evaluate_for_colour(game, game.to_move, piece_tables)
