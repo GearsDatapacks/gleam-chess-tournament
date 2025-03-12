@@ -1,6 +1,7 @@
 import chess/board
 import chess/game
 import chess/piece
+import gleam/dict
 import gleam/int
 import iv
 
@@ -72,5 +73,42 @@ pub fn hash_position(game: game.Game, data: HashData) -> Int {
       let index = index * num_pieces + piece_index
       int.bitwise_exclusive_or(iv.get_or_default(data.table, index, 0), hash)
     }
+  }
+}
+
+pub type CachedPosition {
+  CachedPosition(depth: Int, kind: CacheKind, eval: Int)
+}
+
+pub type CacheKind {
+  Exact
+  AtMost
+  AtLeast
+}
+
+pub type Cache =
+  dict.Dict(Int, CachedPosition)
+
+pub fn get(
+  cache: Cache,
+  hash: Int,
+  depth: Int,
+  best_eval: Int,
+  best_opponent_move: Int,
+) -> Result(Int, Nil) {
+  case dict.get(cache, hash) {
+    Error(_) -> Error(Nil)
+    Ok(cached) ->
+      case cached.depth >= depth {
+        False -> Error(Nil)
+        True ->
+          case cached.kind {
+            Exact -> Ok(cached.eval)
+            AtLeast if cached.eval >= best_opponent_move ->
+              Ok(best_opponent_move)
+            AtMost if cached.eval <= best_eval -> Ok(best_eval)
+            _ -> Error(Nil)
+          }
+      }
   }
 }
