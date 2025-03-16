@@ -1,5 +1,5 @@
 import chess/board
-import chess/game.{type Game}
+import chess/game.{type Game, Game}
 import chess/move.{type Move}
 import chess/piece
 import engine/hash
@@ -286,14 +286,42 @@ fn evaluate_for_colour(
   colour: piece.Colour,
   piece_tables: table.PieceTables,
 ) -> Int {
-  use eval, square, index <- iv.index_fold(game.board, 0)
-  case square {
-    board.Occupied(piece) if piece.colour == colour ->
-      eval
-      + piece_score(piece.kind)
-      + table.piece_score(piece_tables, piece, index)
-    _ -> eval
-  }
+  let material_eval =
+    iv.index_fold(game.board, 0, fn(eval, square, index) {
+      case square {
+        board.Occupied(piece) if piece.colour == colour ->
+          eval
+          + piece_score(piece.kind)
+          + table.piece_score(piece_tables, piece, index)
+        _ -> eval
+      }
+    })
+
+  let #(king_position, enemy_king_position) = find_kings(game, colour)
+  let endgame_eval =
+    endgame_force_king_to_corner_eval(
+      king_position,
+      enemy_king_position,
+      endgame_weight(game, piece.reverse_colour(colour)),
+    )
+
+  material_eval + endgame_eval
+}
+
+/// rook_value * 2 + bishop_value + knight_value
+const endgame_material_count = 16
+
+fn endgame_weight(game: Game, colour: piece.Colour) -> Int {
+  let material =
+    iv.fold(game.board, 0, fn(eval, square) {
+      case square {
+        board.Occupied(piece)
+          if piece.colour == colour && piece.kind != piece.Pawn
+        -> eval + piece_score(piece.kind)
+        _ -> eval
+      }
+    })
+  100 - int.min(100, material / endgame_material_count)
 }
 
 fn piece_score(kind: piece.Kind) -> Int {
@@ -305,6 +333,47 @@ fn piece_score(kind: piece.Kind) -> Int {
     piece.Knight -> 300
     piece.Pawn -> 100
   }
+}
+
+fn find_kings(
+  game: Game,
+  for_colour: piece.Colour,
+) -> #(board.Position, board.Position) {
+  use #(king, enemy_king), square, position <- iv.index_fold(game.board, #(0, 0))
+  case square {
+    board.Occupied(piece.Piece(kind: piece.King, colour:))
+      if colour == for_colour
+    -> #(position, enemy_king)
+    board.Occupied(piece.Piece(kind: piece.King, ..)) -> #(king, position)
+    _ -> #(king, enemy_king)
+  }
+}
+
+fn endgame_force_king_to_corner_eval(
+  king_position: board.Position,
+  enemy_king_position: board.Position,
+  endgame_weight: Int,
+) -> Int {
+  let enemy_king_rank = enemy_king_position / 8
+  let enemy_king_file = enemy_king_position % 8
+
+  let enemy_king_distance_from_centre_rank =
+    int.max(3 - enemy_king_rank, enemy_king_rank - 4)
+  let enemy_king_distance_from_centre_file =
+    int.max(3 - enemy_king_file, enemy_king_file - 4)
+  let enemy_kind_distance_from_centre =
+    enemy_king_distance_from_centre_file + enemy_king_distance_from_centre_rank
+
+  let king_rank = king_position / 8
+  let king_file = king_position % 8
+
+  let rank_distance = int.absolute_value(king_rank - enemy_king_rank)
+  let file_distance = int.absolute_value(king_file - enemy_king_file)
+  let distance = file_distance + rank_distance
+
+  { enemy_kind_distance_from_centre * 10 + { 14 - distance } * 4 }
+  * endgame_weight
+  / 10
 }
 
 fn order_moves(game: Game, moves: List(Move)) -> List(Move) {
