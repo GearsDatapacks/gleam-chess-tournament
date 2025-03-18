@@ -66,6 +66,8 @@ pub fn empty() -> Board {
 
 pub const starting_fen = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
 
+// pub const starting_fen = "8/3K4/4P3/8/8/8/6k1/7q w - - 0 1"
+
 pub fn from_fen(fen: String) -> Board {
   from_fen_loop(fen, 0, size - 1, empty())
 }

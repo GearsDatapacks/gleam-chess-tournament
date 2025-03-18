@@ -1,3 +1,4 @@
+import birl
 import chess/board
 import chess/game.{type Game, Game}
 import chess/move.{type Move}
@@ -5,35 +6,45 @@ import chess/piece
 import engine/hash
 import engine/table
 import gleam/dict
+import gleam/float
 import gleam/int
 import gleam/option.{None, Some}
 import gleam/pair
+import gleam/result
 import iv
 import utils/list
 import wisp
 
-const search_depth = 5
-
 pub fn best_move(game: Game) -> Result(Move, Nil) {
+  let start_time = birl.monotonic_now()
   wisp.log_info("Finding best move for: " <> game.to_fen(game))
-  let SearchResult(eval:, nodes_searched:, cache_hits:, best_move: move, ..) =
-    search(
+  let SearchResult(value: move, nodes_searched:, cache_hits:, ..) =
+    iteratively_deepen(
       game,
-      search_depth,
-      -1_000_000_000,
-      1_000_000_000,
-      Error(Nil),
-      0,
-      0,
+      move.legal(game),
       SearchData(
         piece_tables: table.construct_tables(),
         hash_data: hash.generate_data(),
         cached_positions: dict.new(),
         depth_searched: 0,
+        start_time:,
       ),
     )
   case move {
-    Ok(move) ->
+    Ok(IterationResult(move:, eval:, depth:)) -> {
+      let time_taken =
+        int.to_float(birl.monotonic_now() - start_time) /. 1_000_000.0
+
+      case time_taken >. 5.0 {
+        False -> Nil
+        True ->
+          wisp.log_error(
+            "Exceeded allowed time, took "
+            <> float.to_string(time_taken)
+            <> " seconds.",
+          )
+      }
+
       wisp.log_info(
         "Best move "
         <> move.to_string(move)
@@ -43,22 +54,30 @@ pub fn best_move(game: Game) -> Result(Move, Nil) {
         <> int.to_string(nodes_searched)
         <> " positions, with "
         <> int.to_string(cache_hits)
-        <> " cache hits.",
+        <> " cache hits, at depth "
+        <> int.to_string(depth)
+        <> " in "
+        <> float.to_string(time_taken)
+        <> " seconds.",
       )
+    }
     Error(_) -> wisp.log_info("No legal moves found")
   }
 
-  move
+  case move {
+    Error(Nil) -> Error(Nil)
+    Ok(IterationResult(move:, ..)) -> Ok(move)
+  }
 }
 
-type SearchResult {
+type SearchResult(a) {
   SearchResult(
-    eval: Int,
+    value: a,
     nodes_searched: Int,
     cache_hits: Int,
-    best_move: Result(Move, Nil),
     cached_positions: hash.Cache,
     eval_kind: hash.CacheKind,
+    finished: Bool,
   )
 }
 
@@ -68,19 +87,136 @@ type SearchData {
     hash_data: hash.HashData,
     cached_positions: hash.Cache,
     depth_searched: Int,
+    start_time: Int,
   )
 }
+
+type IterationResult {
+  IterationResult(eval: Int, move: Move, depth: Int)
+}
+
+fn iteratively_deepen(
+  game: Game,
+  moves: List(Move),
+  data: SearchData,
+) -> SearchResult(Result(IterationResult, Nil)) {
+  case moves {
+    [] ->
+      SearchResult(
+        value: Error(Nil),
+        nodes_searched: 0,
+        cache_hits: 0,
+        cached_positions: dict.new(),
+        eval_kind: hash.Exact,
+        finished: True,
+      )
+    _ -> iteratively_deepen_loop(game, 0, 0, 0, Error(Nil), moves, data)
+  }
+}
+
+fn iteratively_deepen_loop(
+  game: Game,
+  depth: Int,
+  nodes_searched: Int,
+  cache_hits: Int,
+  best_move: Result(#(Int, Move), Nil),
+  moves: List(Move),
+  data: SearchData,
+) -> SearchResult(Result(IterationResult, Nil)) {
+  case
+    search_top_level(game, depth, nodes_searched, cache_hits, data, moves, [])
+  {
+    Error(_) ->
+      SearchResult(
+        value: result.map(best_move, fn(best_move) {
+          IterationResult(eval: best_move.0, move: best_move.1, depth:)
+        }),
+        nodes_searched:,
+        cache_hits:,
+        cached_positions: data.cached_positions,
+        eval_kind: hash.Exact,
+        finished: True,
+      )
+    Ok(result) -> {
+      let moves =
+        result.value
+        |> list.sort(fn(a, b) { int.compare(a.0, b.0) })
+
+      let best_move = case moves {
+        [] -> Error(Nil)
+        [best, ..] -> Ok(best)
+      }
+      iteratively_deepen_loop(
+        game,
+        depth + 1,
+        result.nodes_searched,
+        result.cache_hits,
+        best_move,
+        list.map(moves, pair.second),
+        SearchData(..data, cached_positions: result.cached_positions),
+      )
+    }
+  }
+}
+
+fn search_top_level(
+  game: Game,
+  depth: Int,
+  nodes_searched: Int,
+  cache_hits: Int,
+  data: SearchData,
+  moves: List(Move),
+  evaluated: List(#(Int, Move)),
+) -> Result(SearchResult(List(#(Int, Move))), Nil) {
+  case moves {
+    [] ->
+      Ok(SearchResult(
+        value: evaluated,
+        nodes_searched:,
+        cache_hits:,
+        cached_positions: data.cached_positions,
+        eval_kind: hash.Exact,
+        finished: True,
+      ))
+    [move, ..moves] -> {
+      let result =
+        search(
+          move.apply(game, move),
+          depth,
+          -1_000_000_000,
+          1_000_000_000,
+          nodes_searched,
+          cache_hits,
+          data,
+        )
+      case result.finished {
+        False -> Error(Nil)
+        True ->
+          search_top_level(
+            game,
+            depth,
+            result.nodes_searched,
+            result.cache_hits,
+            SearchData(..data, cached_positions: result.cached_positions),
+            moves,
+            [#(result.value, move), ..evaluated],
+          )
+      }
+    }
+  }
+}
+
+const time_allowed = 4_000_000
 
 fn search(
   game: Game,
   depth: Int,
   best_eval: Int,
   best_opponent_move: Int,
-  best_move: Result(Move, Nil),
   nodes_searched: Int,
   cache_hits: Int,
   data: SearchData,
-) -> SearchResult {
+) -> SearchResult(Int) {
   let hash = hash.hash_position(game, data.hash_data)
   case
     hash.get(data.cached_positions, hash, depth, best_eval, best_opponent_move)
@@ -90,83 +226,97 @@ fn search(
         eval,
         nodes_searched,
         cache_hits + 1,
-        best_move,
         data.cached_positions,
         hash.Exact,
+        True,
       )
-    Error(_) ->
-      case depth {
-        0 -> {
-          let eval = evaluate(game, data.piece_tables, data.depth_searched)
-          SearchResult(
-            eval,
-            nodes_searched + 1,
-            cache_hits,
-            best_move,
-            dict.insert(
-              data.cached_positions,
-              hash,
-              hash.CachedPosition(depth:, kind: hash.Exact, eval:),
-            ),
-            hash.Exact,
-          )
-        }
-        _ -> {
-          let attack_information = move.attack_information(game)
-          let legal_moves = move.do_legal(game, attack_information)
+    Error(_) -> {
+      let elapsed = birl.monotonic_now() - data.start_time
 
-          case legal_moves {
-            [] -> {
-              let eval = case attack_information.in_check {
-                // Stalemate
-                False -> 0
-                // Checkmate
-                True -> -1_000_000 + data.depth_searched
-              }
+      case elapsed < time_allowed {
+        False ->
+          SearchResult(
+            0,
+            nodes_searched,
+            cache_hits,
+            data.cached_positions,
+            hash.Exact,
+            False,
+          )
+        True ->
+          case depth {
+            0 -> {
+              let eval = evaluate(game, data.piece_tables, data.depth_searched)
               SearchResult(
                 eval,
-                nodes_searched,
+                nodes_searched + 1,
                 cache_hits,
-                Error(Nil),
                 dict.insert(
                   data.cached_positions,
                   hash,
                   hash.CachedPosition(depth:, kind: hash.Exact, eval:),
                 ),
                 hash.Exact,
+                True,
               )
             }
-            moves -> {
-              let result =
-                search_loop(
-                  game,
-                  order_moves(game, moves),
-                  depth,
-                  best_eval,
-                  best_opponent_move,
-                  best_move,
-                  nodes_searched,
-                  cache_hits,
-                  data,
-                  hash.AtMost,
-                )
+            _ -> {
+              let attack_information = move.attack_information(game)
+              let legal_moves = move.do_legal(game, attack_information)
 
-              SearchResult(
-                ..result,
-                cached_positions: dict.insert(
-                  result.cached_positions,
-                  hash,
-                  hash.CachedPosition(
-                    depth:,
-                    kind: result.eval_kind,
-                    eval: result.eval,
-                  ),
-                ),
-              )
+              case legal_moves {
+                [] -> {
+                  let eval = case attack_information.in_check {
+                    // Stalemate
+                    False -> 0
+                    // Checkmate
+                    True -> -1_000_000 + data.depth_searched
+                  }
+                  SearchResult(
+                    eval,
+                    nodes_searched,
+                    cache_hits,
+                    dict.insert(
+                      data.cached_positions,
+                      hash,
+                      hash.CachedPosition(depth:, kind: hash.Exact, eval:),
+                    ),
+                    hash.Exact,
+                    True,
+                  )
+                }
+                moves -> {
+                  let result =
+                    search_loop(
+                      game,
+                      order_moves(game, moves),
+                      depth,
+                      best_eval,
+                      best_opponent_move,
+                      nodes_searched,
+                      cache_hits,
+                      data,
+                      hash.AtMost,
+                    )
+
+                  SearchResult(
+                    ..result,
+                    cached_positions: dict.insert(
+                      result.cached_positions,
+                      hash,
+                      hash.CachedPosition(
+                        depth:,
+                        kind: result.eval_kind,
+                        eval: result.value,
+                      ),
+                    ),
+                  )
+                }
+              }
             }
           }
-        }
       }
+    }
   }
 }
 
@@ -176,71 +326,75 @@ fn search_loop(
   depth: Int,
   best_eval: Int,
   best_opponent_move: Int,
-  best_move: Result(Move, Nil),
   nodes_searched: Int,
   cache_hits: Int,
   data: SearchData,
   cache_kind: hash.CacheKind,
-) -> SearchResult {
+) -> SearchResult(Int) {
   case moves {
     [] ->
       SearchResult(
         best_eval,
         nodes_searched,
         cache_hits,
-        best_move,
         data.cached_positions,
         cache_kind,
+        True,
       )
     [move, ..moves] -> {
       let SearchResult(
-        eval:,
+        value: eval,
         nodes_searched:,
         cache_hits:,
         cached_positions:,
+        finished:,
         ..,
-      ) =
+      ) as result =
         search(
           move.apply(game, move),
           depth - 1,
           -best_opponent_move,
           -best_eval,
-          best_move,
           nodes_searched,
           cache_hits,
           SearchData(..data, depth_searched: data.depth_searched + 1),
         )
-      let eval = -eval
 
-      case eval >= best_opponent_move {
-        // This move is worse for our opponent than another possible move,
-        // so the other side will not let us get to this position.
-        True ->
-          SearchResult(
-            best_opponent_move,
-            nodes_searched,
-            cache_hits,
-            best_move,
-            cached_positions,
-            hash.AtLeast,
-          )
-        False -> {
-          let #(best_eval, best_move, cache_kind) = case eval > best_eval {
-            False -> #(best_eval, best_move, cache_kind)
-            True -> #(eval, Ok(move), hash.Exact)
+      case finished {
+        False -> result
+        True -> {
+          let eval = -eval
+
+          case eval >= best_opponent_move {
+            // This move is worse for our opponent than another possible move,
+            // so the other side will not let us get to this position.
+            True ->
+              SearchResult(
+                best_opponent_move,
+                nodes_searched,
+                cache_hits,
+                cached_positions,
+                hash.AtLeast,
+                True,
+              )
+            False -> {
+              let #(best_eval, cache_kind) = case eval > best_eval {
+                False -> #(best_eval, cache_kind)
+                True -> #(eval, hash.Exact)
+              }
+              search_loop(
+                game,
+                moves,
+                depth,
+                best_eval,
+                best_opponent_move,
+                nodes_searched,
+                cache_hits,
+                SearchData(..data, cached_positions:),
+                cache_kind,
+              )
+            }
           }
-          search_loop(
-            game,
-            moves,
-            depth,
-            best_eval,
-            best_opponent_move,
-            best_move,
-            nodes_searched,
-            cache_hits,
-            SearchData(..data, cached_positions:),
-            cache_kind,
-          )
         }
       }
     }
