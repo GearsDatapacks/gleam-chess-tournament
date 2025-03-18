@@ -140,7 +140,7 @@ fn iteratively_deepen_loop(
     Ok(result) -> {
       let moves =
         result.value
-        |> list.sort(fn(a, b) { int.compare(a.0, b.0) })
+        |> list.sort(fn(a, b) { int.compare(b.0, a.0) })
 
       let best_move = case moves {
         [] -> Error(Nil)
@@ -199,7 +199,7 @@ fn search_top_level(
             result.cache_hits,
             SearchData(..data, cached_positions: result.cached_positions),
             moves,
-            [#(result.value, move), ..evaluated],
+            [#(-result.value, move), ..evaluated],
           )
       }
     }
