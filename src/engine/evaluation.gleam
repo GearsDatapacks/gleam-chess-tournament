@@ -1,6 +1,6 @@
 import birl
 import chess/board
-import chess/game.{type Game, Game}
+import chess/game.{type Game}
 import chess/move.{type Move}
 import chess/piece
 import engine/hash
@@ -124,7 +124,17 @@ fn iteratively_deepen_loop(
   data: SearchData,
 ) -> SearchResult(Result(IterationResult, Nil)) {
   case
-    search_top_level(game, depth, nodes_searched, cache_hits, data, moves, [])
+    search_top_level(
+      game,
+      depth,
+      nodes_searched,
+      cache_hits,
+      -1_000_000_000,
+      data,
+      moves,
+      [],
+      Error(Nil),
+    )
   {
     Error(_) ->
       SearchResult(
@@ -138,21 +148,21 @@ fn iteratively_deepen_loop(
         finished: True,
       )
     Ok(result) -> {
-      let moves =
-        result.value
-        |> list.sort(fn(a, b) { int.compare(b.0, a.0) })
+      let #(moves, eval, best_move) = result.value
+      let ordered_moves = list.sort(moves, fn(a, b) { int.compare(b.0, a.0) })
 
-      let best_move = case moves {
-        [] -> Error(Nil)
-        [best, ..] -> Ok(best)
+      let best_move = case best_move {
+        Error(_) -> Error(Nil)
+        Ok(move) -> Ok(#(eval, move))
       }
+
       iteratively_deepen_loop(
         game,
         depth + 1,
         result.nodes_searched,
         result.cache_hits,
         best_move,
-        list.map(moves, pair.second),
+        list.map(ordered_moves, pair.second),
         SearchData(..data, cached_positions: result.cached_positions),
       )
     }
@@ -164,14 +174,16 @@ fn search_top_level(
   depth: Int,
   nodes_searched: Int,
   cache_hits: Int,
+  best_eval: Int,
   data: SearchData,
   moves: List(Move),
   evaluated: List(#(Int, Move)),
-) -> Result(SearchResult(List(#(Int, Move))), Nil) {
+  best_move: Result(Move, Nil),
+) -> Result(SearchResult(#(List(#(Int, Move)), Int, Result(Move, Nil))), Nil) {
   case moves {
     [] ->
       Ok(SearchResult(
-        value: evaluated,
+        value: #(evaluated, best_eval, best_move),
         nodes_searched:,
         cache_hits:,
         cached_positions: data.cached_positions,
@@ -184,29 +196,44 @@ fn search_top_level(
           move.apply(game, move),
           depth,
           -1_000_000_000,
-          1_000_000_000,
+          -best_eval,
           nodes_searched,
           cache_hits,
           data,
         )
       case result.finished {
         False -> Error(Nil)
-        True ->
+        True -> {
+          let eval = -result.value
+          let #(best_eval, best_move) = case eval > best_eval {
+            True -> #(eval, Ok(move))
+            False -> #(best_eval, best_move)
+          }
+
+          let eval = case result.eval_kind {
+            hash.AtLeast -> eval - 1
+            hash.AtMost -> eval - 1
+            hash.Exact -> eval
+          }
+
           search_top_level(
             game,
             depth,
             result.nodes_searched,
             result.cache_hits,
+            best_eval,
             SearchData(..data, cached_positions: result.cached_positions),
             moves,
-            [#(-result.value, move), ..evaluated],
+            [#(eval, move), ..evaluated],
+            best_move,
           )
+        }
       }
     }
   }
 }
 
-const time_allowed = 4_000_000
+const time_allowed = 4_500_000
 
 fn search(
   game: Game,
