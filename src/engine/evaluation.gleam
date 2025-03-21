@@ -18,7 +18,13 @@ import wisp
 pub fn best_move(game: Game) -> Result(Move, Nil) {
   let start_time = birl.monotonic_now()
   wisp.log_info("Finding best move for: " <> game.to_fen(game))
-  let SearchResult(value: move, nodes_searched:, cache_hits:, ..) =
+  let SearchResult(
+    value: move,
+    nodes_searched:,
+    cache_hits:,
+    time_finished:,
+    ..,
+  ) =
     iteratively_deepen(
       game,
       move.legal(game),
@@ -34,6 +40,7 @@ pub fn best_move(game: Game) -> Result(Move, Nil) {
     Ok(IterationResult(move:, eval:, depth:)) -> {
       let time_taken =
         int.to_float(birl.monotonic_now() - start_time) /. 1_000_000.0
+      let main_calc = int.to_float(time_finished - start_time) /. 1_000_000.0
 
       case time_taken >. 5.0 {
         False -> Nil
@@ -58,6 +65,8 @@ pub fn best_move(game: Game) -> Result(Move, Nil) {
         <> int.to_string(depth)
         <> " in "
         <> float.to_string(time_taken)
+        <> " seconds, final search finished in "
+        <> float.to_string(main_calc)
         <> " seconds.",
       )
     }
@@ -78,6 +87,7 @@ type SearchResult(a) {
     cached_positions: hash.Cache,
     eval_kind: hash.CacheKind,
     finished: Bool,
+    time_finished: Int,
   )
 }
 
@@ -109,8 +119,19 @@ fn iteratively_deepen(
         cached_positions: dict.new(),
         eval_kind: hash.Exact,
         finished: True,
+        time_finished: 0,
       )
-    _ -> iteratively_deepen_loop(game, 0, 0, 0, Error(Nil), moves, data)
+    _ ->
+      iteratively_deepen_loop(
+        game,
+        0,
+        0,
+        0,
+        Error(Nil),
+        moves,
+        data,
+        birl.monotonic_now(),
+      )
   }
 }
 
@@ -122,6 +143,7 @@ fn iteratively_deepen_loop(
   best_move: Result(#(Int, Move), Nil),
   moves: List(Move),
   data: SearchData,
+  time_finished: Int,
 ) -> SearchResult(Result(IterationResult, Nil)) {
   case
     search_top_level(
@@ -146,6 +168,7 @@ fn iteratively_deepen_loop(
         cached_positions: data.cached_positions,
         eval_kind: hash.Exact,
         finished: True,
+        time_finished:,
       )
     Ok(result) -> {
       let #(moves, eval, best_move) = result.value
@@ -164,6 +187,7 @@ fn iteratively_deepen_loop(
         best_move,
         list.map(ordered_moves, pair.second),
         SearchData(..data, cached_positions: result.cached_positions),
+        birl.monotonic_now(),
       )
     }
   }
@@ -189,6 +213,7 @@ fn search_top_level(
         cached_positions: data.cached_positions,
         eval_kind: hash.Exact,
         finished: True,
+        time_finished: 0,
       ))
     [move, ..moves] -> {
       let result =
@@ -256,6 +281,7 @@ fn search(
         data.cached_positions,
         hash.Exact,
         True,
+        0,
       )
     Error(_) -> {
       let elapsed = birl.monotonic_now() - data.start_time
@@ -269,6 +295,7 @@ fn search(
             data.cached_positions,
             hash.Exact,
             False,
+            0,
           )
         True ->
           case depth {
@@ -285,6 +312,7 @@ fn search(
                 ),
                 hash.Exact,
                 True,
+                0,
               )
             }
             _ -> {
@@ -310,6 +338,7 @@ fn search(
                     ),
                     hash.Exact,
                     True,
+                    0,
                   )
                 }
                 moves -> {
@@ -367,6 +396,7 @@ fn search_loop(
         data.cached_positions,
         cache_kind,
         True,
+        0,
       )
     [move, ..moves] -> {
       let SearchResult(
@@ -403,6 +433,7 @@ fn search_loop(
                 cached_positions,
                 hash.AtLeast,
                 True,
+                0,
               )
             False -> {
               let #(best_eval, cache_kind) = case eval > best_eval {
