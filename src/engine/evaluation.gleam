@@ -271,7 +271,14 @@ fn search(
 ) -> SearchResult(Int) {
   let hash = hash.hash_position(game, data.hash_data)
   case
-    hash.get(data.cached_positions, hash, depth, best_eval, best_opponent_move)
+    hash.get(
+      data.cached_positions,
+      hash,
+      depth,
+      data.depth_searched,
+      best_eval,
+      best_opponent_move,
+    )
   {
     Ok(eval) ->
       SearchResult(
@@ -305,10 +312,13 @@ fn search(
                 eval,
                 nodes_searched + 1,
                 cache_hits,
-                dict.insert(
+                hash.set(
                   data.cached_positions,
                   hash,
-                  hash.CachedPosition(depth:, kind: hash.Exact, eval:),
+                  depth,
+                  data.depth_searched,
+                  hash.Exact,
+                  eval,
                 ),
                 hash.Exact,
                 True,
@@ -331,10 +341,13 @@ fn search(
                     eval,
                     nodes_searched,
                     cache_hits,
-                    dict.insert(
+                    hash.set(
                       data.cached_positions,
                       hash,
-                      hash.CachedPosition(depth:, kind: hash.Exact, eval:),
+                      depth,
+                      data.depth_searched,
+                      hash.Exact,
+                      eval,
                     ),
                     hash.Exact,
                     True,
@@ -357,14 +370,13 @@ fn search(
 
                   SearchResult(
                     ..result,
-                    cached_positions: dict.insert(
+                    cached_positions: hash.set(
                       result.cached_positions,
                       hash,
-                      hash.CachedPosition(
-                        depth:,
-                        kind: result.eval_kind,
-                        eval: result.value,
-                      ),
+                      depth,
+                      data.depth_searched,
+                      result.eval_kind,
+                      result.value,
                     ),
                   )
                 }

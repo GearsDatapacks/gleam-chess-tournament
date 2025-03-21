@@ -93,22 +93,58 @@ pub fn get(
   cache: Cache,
   hash: Int,
   depth: Int,
+  depth_searched: Int,
   best_eval: Int,
   best_opponent_move: Int,
 ) -> Result(Int, Nil) {
   case dict.get(cache, hash) {
-    Error(_) -> Error(Nil)
-    Ok(cached) ->
-      case cached.depth >= depth {
-        False -> Error(Nil)
-        True ->
-          case cached.kind {
-            Exact -> Ok(cached.eval)
-            AtLeast if cached.eval >= best_opponent_move ->
-              Ok(best_opponent_move)
-            AtMost if cached.eval <= best_eval -> Ok(best_eval)
-            _ -> Error(Nil)
+    Ok(cached) if cached.depth >= depth -> {
+      let eval = case is_mate_score(cached.eval) {
+        False -> cached.eval
+        True -> {
+          case cached.eval > 0 {
+            True -> cached.eval - depth_searched
+            False -> cached.eval + depth_searched
           }
+        }
       }
+
+      case cached.kind {
+        Exact -> Ok(eval)
+        AtLeast if eval >= best_opponent_move -> Ok(best_opponent_move)
+        AtMost if eval <= best_eval -> Ok(best_eval)
+        _ -> Error(Nil)
+      }
+    }
+    _ -> Error(Nil)
   }
 }
+
+pub fn set(
+  cache: Cache,
+  hash: Int,
+  depth: Int,
+  depth_searched: Int,
+  kind: CacheKind,
+  eval: Int,
+) -> Cache {
+  let eval = case is_mate_score(eval) {
+    False -> eval
+    True -> {
+      case eval > 0 {
+        True -> eval + depth_searched
+        False -> eval - depth_searched
+      }
+    }
+  }
+
+  dict.insert(cache, hash, CachedPosition(depth:, kind:, eval:))
+}
+
+fn is_mate_score(score: Int) -> Bool {
+  int.absolute_value(score) >= mate_score - max_mate_depth
+}
+
+const mate_score = 1_000_000
+
+const max_mate_depth = 1000
