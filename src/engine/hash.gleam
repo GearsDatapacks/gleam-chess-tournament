@@ -33,7 +33,7 @@ const black_king = 11
 
 const num_pieces = 12
 
-pub type HashData {
+pub opaque type HashData {
   HashData(table: iv.Array(Int), black_to_move: Int)
 }
 

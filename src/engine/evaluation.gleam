@@ -512,24 +512,26 @@ fn evaluate_for_colour(
   colour: piece.Colour,
   piece_tables: table.PieceTables,
 ) -> Int {
+  let #(king_position, enemy_king_position) = find_kings(game, colour)
+
+  let endgame_weight = endgame_weight(game, piece.reverse_colour(colour))
+  let endgame_eval =
+    endgame_force_king_to_corner_eval(
+      king_position,
+      enemy_king_position,
+      endgame_weight,
+    )
+
   let material_eval =
     iv.index_fold(game.game.board, 0, fn(eval, square, index) {
       case square {
         board.Occupied(piece) if piece.colour == colour ->
           eval
           + piece_score(piece.kind)
-          + table.piece_score(piece_tables, piece, index)
+          + table.piece_score(piece_tables, piece, index, endgame_weight)
         _ -> eval
       }
     })
-
-  let #(king_position, enemy_king_position) = find_kings(game, colour)
-  let endgame_eval =
-    endgame_force_king_to_corner_eval(
-      king_position,
-      enemy_king_position,
-      endgame_weight(game, piece.reverse_colour(colour)),
-    )
 
   material_eval + endgame_eval
 }
