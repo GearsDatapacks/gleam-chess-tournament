@@ -1,8 +1,10 @@
 import chess/board
 import chess/game
+import chess/move
 import chess/piece
 import gleam/dict
 import gleam/int
+import gleam/option
 import iv
 
 const white_pawn = 0
@@ -52,27 +54,64 @@ pub fn hash_position(game: game.Game, data: HashData) -> Int {
     piece.White -> 0
   }
 
-  use hash, square, index <- iv.index_fold(game.board, hash)
-  case square {
-    board.Empty -> hash
-    board.Occupied(piece) -> {
-      let piece_index = case piece.kind, piece.colour {
-        piece.Pawn, piece.White -> white_pawn
-        piece.Bishop, piece.White -> white_bishop
-        piece.King, piece.White -> white_king
-        piece.Knight, piece.White -> white_knight
-        piece.Queen, piece.White -> white_queen
-        piece.Rook, piece.White -> white_rook
-        piece.Bishop, piece.Black -> black_bishop
-        piece.King, piece.Black -> black_king
-        piece.Knight, piece.Black -> black_knight
-        piece.Pawn, piece.Black -> black_pawn
-        piece.Queen, piece.Black -> black_queen
-        piece.Rook, piece.Black -> black_rook
-      }
-      let index = index * num_pieces + piece_index
-      int.bitwise_exclusive_or(iv.get_or_default(data.table, index, 0), hash)
+  iv.index_fold(game.board, hash, fn(hash, square, position) {
+    case square {
+      board.Empty -> hash
+      board.Occupied(piece) -> toggle_hash_square(hash, position, piece, data)
     }
+  })
+}
+
+fn toggle_hash_square(
+  hash: Int,
+  position: Int,
+  piece: piece.Piece,
+  data: HashData,
+) -> Int {
+  let piece_index = case piece.kind, piece.colour {
+    piece.Pawn, piece.White -> white_pawn
+    piece.Bishop, piece.White -> white_bishop
+    piece.King, piece.White -> white_king
+    piece.Knight, piece.White -> white_knight
+    piece.Queen, piece.White -> white_queen
+    piece.Rook, piece.White -> white_rook
+    piece.Bishop, piece.Black -> black_bishop
+    piece.King, piece.Black -> black_king
+    piece.Knight, piece.Black -> black_knight
+    piece.Pawn, piece.Black -> black_pawn
+    piece.Queen, piece.Black -> black_queen
+    piece.Rook, piece.Black -> black_rook
+  }
+  let index = position * num_pieces + piece_index
+  int.bitwise_exclusive_or(iv.get_or_default(data.table, index, 0), hash)
+}
+
+pub fn update(hash: Int, move_info: move.MoveInfo, data: HashData) -> Int {
+  let move.MoveInfo(
+    capture:,
+    moved_from:,
+    moved_piece:,
+    moved_to:,
+    promotion:,
+    ..,
+  ) = move_info
+
+  let hash =
+    hash
+    |> int.bitwise_exclusive_or(data.black_to_move)
+    |> toggle_hash_square(moved_from, moved_piece, data)
+    |> toggle_hash_square(
+      moved_to,
+      case promotion {
+        option.None -> moved_piece
+        option.Some(piece) -> piece
+      },
+      data,
+    )
+  case capture {
+    option.None -> hash
+    option.Some(#(position, piece)) ->
+      toggle_hash_square(hash, position, piece, data)
   }
 }
 

@@ -1,9 +1,10 @@
 import birl
 import chess/board
-import chess/game.{type Game}
+import chess/game
 import chess/move.{type Move}
 import chess/piece
 import engine/hash
+import engine/info.{type Game}
 import engine/table
 import gleam/dict
 import gleam/float
@@ -15,9 +16,10 @@ import iv
 import utils/list
 import wisp
 
-pub fn best_move(game: Game) -> Result(Move, Nil) {
+pub fn best_move(game: game.Game) -> Result(Move, Nil) {
   let start_time = birl.monotonic_now()
   wisp.log_info("Finding best move for: " <> game.to_fen(game))
+  let #(game, moves) = info.legal(info.new(game))
   let SearchResult(
     value: move,
     nodes_searched:,
@@ -27,7 +29,7 @@ pub fn best_move(game: Game) -> Result(Move, Nil) {
   ) =
     iteratively_deepen(
       game,
-      move.legal(game),
+      moves,
       SearchData(
         piece_tables: table.construct_tables(),
         hash_data: hash.generate_data(),
@@ -218,7 +220,7 @@ fn search_top_level(
     [move, ..moves] -> {
       let result =
         search(
-          move.apply(game, move),
+          info.apply_move(game, move),
           depth,
           -1_000_000_000,
           -best_eval,
@@ -269,7 +271,7 @@ fn search(
   cache_hits: Int,
   data: SearchData,
 ) -> SearchResult(Int) {
-  let hash = hash.hash_position(game, data.hash_data)
+  let hash = game.zobrist_hash
   case
     hash.get(
       data.cached_positions,
@@ -326,8 +328,8 @@ fn search(
               )
             }
             _ -> {
-              let attack_information = move.attack_information(game)
-              let legal_moves = move.do_legal(game, attack_information)
+              let #(game, attack_information) = info.attack_information(game)
+              let #(game, legal_moves) = info.legal(game)
 
               case legal_moves {
                 [] -> {
@@ -420,7 +422,7 @@ fn search_loop(
         ..,
       ) as result =
         search(
-          move.apply(game, move),
+          info.apply_move(game, move),
           depth - 1,
           -best_opponent_move,
           -best_eval,
@@ -477,11 +479,11 @@ pub fn evaluate(
   depth_searched: Int,
 ) -> Int {
   // Fifty move rule
-  case game.half_moves >= 50 {
+  case game.game.half_moves >= 50 {
     True -> 0
     False -> {
-      let attack_information = move.attack_information(game)
-      let legal_moves = move.do_legal(game, attack_information)
+      let #(game, attack_information) = info.attack_information(game)
+      let #(game, legal_moves) = info.legal(game)
 
       case legal_moves {
         [] ->
@@ -492,10 +494,10 @@ pub fn evaluate(
             True -> -1_000_000 + depth_searched
           }
         _ ->
-          evaluate_for_colour(game, game.to_move, piece_tables)
+          evaluate_for_colour(game, game.game.to_move, piece_tables)
           - evaluate_for_colour(
             game,
-            piece.reverse_colour(game.to_move),
+            piece.reverse_colour(game.game.to_move),
             piece_tables,
           )
         // + 10
@@ -511,7 +513,7 @@ fn evaluate_for_colour(
   piece_tables: table.PieceTables,
 ) -> Int {
   let material_eval =
-    iv.index_fold(game.board, 0, fn(eval, square, index) {
+    iv.index_fold(game.game.board, 0, fn(eval, square, index) {
       case square {
         board.Occupied(piece) if piece.colour == colour ->
           eval
@@ -537,7 +539,7 @@ const endgame_material_count = 16
 
 fn endgame_weight(game: Game, colour: piece.Colour) -> Int {
   let material =
-    iv.fold(game.board, 0, fn(eval, square) {
+    iv.fold(game.game.board, 0, fn(eval, square) {
       case square {
         board.Occupied(piece)
           if piece.colour == colour && piece.kind != piece.Pawn
@@ -563,7 +565,10 @@ fn find_kings(
   game: Game,
   for_colour: piece.Colour,
 ) -> #(board.Position, board.Position) {
-  use #(king, enemy_king), square, position <- iv.index_fold(game.board, #(0, 0))
+  use #(king, enemy_king), square, position <- iv.index_fold(game.game.board, #(
+    0,
+    0,
+  ))
   case square {
     board.Occupied(piece.Piece(kind: piece.King, colour:))
       if colour == for_colour
@@ -619,8 +624,8 @@ fn guess_eval(game: Game, full_move: Move) -> Int {
       let guess = 0
 
       let guess = case
-        iv.get(game.board, move.from),
-        iv.get(game.board, move.to)
+        iv.get(game.game.board, move.from),
+        iv.get(game.game.board, move.to)
       {
         Ok(board.Occupied(moving_piece)), Ok(board.Occupied(captured_piece)) ->
           guess

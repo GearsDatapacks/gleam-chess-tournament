@@ -1128,3 +1128,106 @@ fn apply_basic_move(
 
   Game(..game, board:, half_moves:, en_passant:, castling:)
 }
+
+pub type MoveInfo {
+  MoveInfo(
+    moved_from: Position,
+    moved_to: Position,
+    moved_piece: piece.Piece,
+    promotion: Option(piece.Piece),
+    capture: Option(#(Position, piece.Piece)),
+    new_en_passant_square: Option(Position),
+    new_castling: game.Castling,
+    reset_half_move_counter: Bool,
+  )
+}
+
+pub fn info(game: Game, move: Move) -> Result(MoveInfo, Nil) {
+  case move {
+    Basic(move) -> Ok(basic_move_info(game, move, None))
+    Promotion(move, new_kind) -> Ok(basic_move_info(game, move, Some(new_kind)))
+    LongCastle | ShortCastle -> Error(Nil)
+  }
+}
+
+fn basic_move_info(
+  game: Game,
+  move: BasicMove,
+  new_kind: Option(piece.Kind),
+) -> MoveInfo {
+  let newly_occupied = iv.get_or_default(game.board, move.to, board.Empty)
+  let #(moved_piece, promotion) = case iv.get(game.board, move.from) {
+    Ok(board.Occupied(piece)) ->
+      case new_kind {
+        None -> #(piece, None)
+        Some(new_kind) -> #(piece, Some(Piece(piece.colour, new_kind)))
+      }
+    _ -> #(Piece(game.to_move, Pawn), None)
+  }
+
+  let was_capture = case newly_occupied {
+    board.Occupied(_) -> True
+    _ -> False
+  }
+
+  let was_pawn_move = moved_piece.kind == Pawn
+
+  let reset_half_move_counter = was_capture || was_pawn_move
+
+  let en_passant = case was_pawn_move, move.to / 8 - move.from / 8 {
+    True, 2 -> Some(move.to - 8)
+    True, -2 -> Some(move.to + 8)
+    _, _ -> None
+  }
+
+  let capture = case newly_occupied {
+    board.Empty -> None
+    board.Occupied(piece) -> Some(#(move.to, piece))
+  }
+
+  let capture = case Some(move.to) == game.en_passant && was_pawn_move {
+    False -> capture
+    True -> {
+      let captured_pawn = move.from / 8 * 8 + move.to % 8
+      Some(#(
+        captured_pawn,
+        Piece(colour: piece.reverse_colour(game.to_move), kind: Pawn),
+      ))
+    }
+  }
+
+  let castling = case moved_piece, move.from % 8 {
+    Piece(White, piece.King), _ ->
+      game.Castling(
+        ..game.castling,
+        white_kingside: False,
+        white_queenside: False,
+      )
+    Piece(Black, piece.King), _ ->
+      game.Castling(
+        ..game.castling,
+        black_kingside: False,
+        black_queenside: False,
+      )
+    Piece(White, piece.Rook), 7 ->
+      game.Castling(..game.castling, white_kingside: False)
+    Piece(White, piece.Rook), 0 ->
+      game.Castling(..game.castling, white_queenside: False)
+    Piece(Black, piece.Rook), 7 ->
+      game.Castling(..game.castling, black_kingside: False)
+    Piece(Black, piece.Rook), 0 ->
+      game.Castling(..game.castling, black_queenside: False)
+    _, _ -> game.castling
+  }
+
+  MoveInfo(
+    moved_from: move.from,
+    moved_to: move.to,
+    moved_piece:,
+    promotion:,
+    capture:,
+    new_en_passant_square: en_passant,
+    new_castling: castling,
+    reset_half_move_counter:,
+  )
+}
