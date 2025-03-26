@@ -2,9 +2,11 @@ import chess/board
 import chess/game
 import chess/move
 import gleam/int
+import gleam/io
 import gleam/list
 import gleeunit
 import gleeunit/should
+import pocket_watch
 
 pub fn main() {
   gleeunit.main()
@@ -38,50 +40,54 @@ fn do_perft(game: game.Game, depth: Int) -> Int {
   }
 }
 
-pub fn perft_test_() {
-  [
-    perft_initial_position,
-    perft_position2,
-    perft_position3,
-    perft_position4,
-    perft_position5,
-    perft_position6,
-  ]
-  |> list.map(Timeout(1_000_000, _))
+fn print_time(name: String, time: String) -> Nil {
+  io.println_error("\nPerft test of " <> name <> " took " <> time <> ".")
 }
 
-fn perft_initial_position() {
+pub fn perft_initial_position_test_() {
+  use <- Timeout(1_000_000)
+  use <- pocket_watch.callback("initial position", print_time)
   perft_all("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1", [
     20, 400, 8902, 197_281, 4_865_609, 119_060_324,
   ])
 }
 
-fn perft_position2() {
+pub fn perft_position2_test_() {
+  use <- Timeout(1_000_000)
+  use <- pocket_watch.callback("position 2", print_time)
   perft_all(
     "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1",
     [48, 2039, 97_862, 4_085_603, 193_690_690],
   )
 }
 
-fn perft_position3() {
+pub fn perft_position3_test_() {
+  use <- Timeout(1_000_000)
+  use <- pocket_watch.callback("position 3", print_time)
   perft_all("8/2p5/3p4/KP5r/1R3p1k/8/4P1P1/8 w - - 0 1", [
     14, 191, 2812, 43_238, 674_624, 11_030_083, 178_633_661,
   ])
 }
 
-fn perft_position4() {
+pub fn perft_position4_test_() {
+  use <- Timeout(1_000_000)
+  use <- pocket_watch.callback("position 4", print_time)
   perft_all("r3k2r/Pppp1ppp/1b3nbN/nP6/BBP1P3/q4N2/Pp1P2PP/R2Q1RK1 w kq - 0 1", [
     6, 264, 9467, 422_333, 15_833_292,
   ])
 }
 
-fn perft_position5() {
+pub fn perft_position5_test_() {
+  use <- Timeout(1_000_000)
+  use <- pocket_watch.callback("position 5", print_time)
   perft_all("rnbq1k1r/pp1Pbppp/2p5/8/2B5/8/PPP1NnPP/RNBQK2R w KQ - 1 8", [
     44, 1486, 62_379, 2_103_487, 89_941_194,
   ])
 }
 
-fn perft_position6() {
+pub fn perft_position6_test_() {
+  use <- Timeout(1_000_000)
+  use <- pocket_watch.callback("position 6", print_time)
   perft_all(
     "r4rk1/1pp1qppp/p1np1n2/2b1p1B1/2B1P1b1/P1NP1N2/1PP1QPPP/R4RK1 w - - 0 10",
     [46, 2079, 89_890, 3_894_594, 164_075_551],
