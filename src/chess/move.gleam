@@ -414,20 +414,6 @@ fn get_moves_for_piece(
   }
 }
 
-type MoveValidity {
-  Valid
-  Invalid
-  ValidThenStop
-}
-
-fn move_validity(square: board.Square, colour: piece.Colour) -> MoveValidity {
-  case square {
-    board.Empty -> Valid
-    board.Occupied(piece) if piece.colour == colour -> Invalid
-    board.Occupied(_) -> ValidThenStop
-  }
-}
-
 fn maybe_move(
   game: Game,
   from: Position,
@@ -439,12 +425,11 @@ fn maybe_move(
     Ok(to) ->
       case iv.get(game.board, to) {
         Error(_) -> Error(Nil)
-        Ok(square) ->
-          case move_validity(square, game.to_move) {
-            Valid -> Ok(Move(from:, to:))
-            ValidThenStop if allow_captures -> Ok(Move(from:, to:))
-            _ -> Error(Nil)
-          }
+        Ok(board.Empty) -> Ok(Move(from:, to:))
+        Ok(board.Occupied(Piece(colour:, ..)))
+          if colour != game.to_move && allow_captures
+        -> Ok(Move(from:, to:))
+        _ -> Error(Nil)
       }
   }
 }
@@ -480,19 +465,15 @@ fn get_sliding_moves_loop(
   case direction.in_direction(position, direction) {
     Error(_) -> moves
     Ok(new_position) ->
-      case
-        iv.get(game.board, new_position)
-        |> result.map(move_validity(_, game.to_move))
-      {
-        Error(_) | Ok(Invalid) -> moves
-        Ok(ValidThenStop) -> {
+      case iv.get(game.board, new_position) {
+        Ok(board.Occupied(Piece(colour:, ..))) if colour != game.to_move -> {
           let move = Move(from: original_position, to: new_position)
           case piece_can_move(move, attack_information) {
             False -> moves
             True -> [Basic(move), ..moves]
           }
         }
-        Ok(Valid) -> {
+        Ok(board.Empty) -> {
           let move = Move(from: original_position, to: new_position)
           let moves = case piece_can_move(move, attack_information) {
             False -> moves
@@ -507,6 +488,7 @@ fn get_sliding_moves_loop(
             moves,
           )
         }
+        _ -> moves
       }
   }
 }
@@ -529,16 +511,12 @@ fn get_sliding_lines_loop(
   case direction.in_direction(position, direction) {
     Error(_) -> moves
     Ok(new_position) ->
-      case
-        iv.get(game.board, new_position)
-        |> result.map(move_validity(_, game.to_move))
-      {
-        Error(_) | Ok(Invalid) -> moves
-        Ok(ValidThenStop) -> [
+      case iv.get(game.board, new_position) {
+        Ok(board.Occupied(Piece(colour:, ..))) if colour != game.to_move -> [
           Move(from: original_position, to: new_position),
           ..moves
         ]
-        Ok(Valid) ->
+        Ok(board.Empty) ->
           get_sliding_lines_loop(
             game,
             original_position,
@@ -546,6 +524,7 @@ fn get_sliding_lines_loop(
             direction,
             [Move(from: original_position, to: new_position), ..moves],
           )
+        _ -> moves
       }
   }
 }
@@ -703,9 +682,9 @@ fn get_pawn_moves(
   attack_information: AttackInformation,
   moves: List(Move),
 ) -> List(Move) {
-  let #(direction, take_directions) = case game.to_move {
-    Black -> #(direction.down, [direction.down_left, direction.down_right])
-    White -> #(direction.up, [direction.up_left, direction.up_right])
+  let #(direction, take_left, take_right) = case game.to_move {
+    Black -> #(direction.down, direction.down_left, direction.down_right)
+    White -> #(direction.up, direction.up_left, direction.up_right)
   }
 
   let can_double_move = case game.to_move, position / 8 {
@@ -714,39 +693,9 @@ fn get_pawn_moves(
   }
 
   let moves =
-    take_directions
-    |> list.fold(moves, fn(moves, direction) {
-      let _ = case direction.in_direction(position, direction) {
-        Error(_) -> moves
-        Ok(to) ->
-          case iv.get(game.board, to) {
-            Error(_) -> moves
-            Ok(square) ->
-              case move_validity(square, game.to_move) {
-                ValidThenStop -> {
-                  let move = Move(from: position, to:)
-                  case piece_can_move(move, attack_information) {
-                    False -> moves
-                    True -> add_pawn_moves(move, game.to_move, moves)
-                  }
-                }
-                Valid ->
-                  case
-                    check_for_en_passant(game, position, to, attack_information)
-                  {
-                    False -> moves
-                    True ->
-                      add_pawn_moves(
-                        Move(from: position, to:),
-                        game.to_move,
-                        moves,
-                      )
-                  }
-                Invalid -> moves
-              }
-          }
-      }
-    })
+    moves
+    |> pawn_capture(game, position, take_left, attack_information)
+    |> pawn_capture(game, position, take_right, attack_information)
 
   case maybe_move(game, position, direction, False) {
     Ok(move) -> {
@@ -770,6 +719,35 @@ fn get_pawn_moves(
       }
     }
     Error(_) -> moves
+  }
+}
+
+fn pawn_capture(
+  moves: List(Move),
+  game: Game,
+  position: Position,
+  direction: direction.Direction,
+  attack_information: AttackInformation,
+) -> List(Move) {
+  case direction.in_direction(position, direction) {
+    Error(_) -> moves
+    Ok(to) ->
+      case iv.get(game.board, to) {
+        Ok(board.Occupied(Piece(colour:, ..))) if colour != game.to_move -> {
+          let move = Move(from: position, to:)
+          case piece_can_move(move, attack_information) {
+            False -> moves
+            True -> add_pawn_moves(move, game.to_move, moves)
+          }
+        }
+        Ok(board.Empty) ->
+          case check_for_en_passant(game, position, to, attack_information) {
+            False -> moves
+            True ->
+              add_pawn_moves(Move(from: position, to:), game.to_move, moves)
+          }
+        _ -> moves
+      }
   }
 }
 
@@ -927,11 +905,8 @@ fn get_sliding_attacks_loop(
   case direction.in_direction(position, direction) {
     Error(_) -> positions
     Ok(new_position) ->
-      case
-        iv.get(game.board, new_position)
-        |> result.map(move_validity(_, game.to_move))
-      {
-        Ok(Valid) ->
+      case iv.get(game.board, new_position) {
+        Ok(board.Empty) ->
           get_sliding_attacks_loop(game, new_position, direction, [
             new_position,
             ..positions
