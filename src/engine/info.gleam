@@ -91,8 +91,13 @@ pub fn legal(game: Game) -> #(Game, List(Move)) {
     Some(moves) -> #(game, moves)
     None -> {
       let #(game, information) = attack_information(game)
-      let moves = move.do_legal(game.game, information)
+      let moves = move.do_legal(game.game, information, move.AllMoves)
       #(Game(..game, legal_moves: Some(moves)), moves)
     }
   }
+}
+
+pub fn captures(game: Game) -> #(Game, List(Move)) {
+  let #(game, attack_information) = attack_information(game)
+  #(game, move.do_legal(game.game, attack_information, move.OnlyCaptures))
 }

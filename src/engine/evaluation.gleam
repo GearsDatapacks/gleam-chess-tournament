@@ -307,7 +307,14 @@ fn search(
         True ->
           case depth {
             0 -> {
-              let eval = evaluate(game, data.piece_tables, data.depth_searched)
+              let eval =
+                search_all_captures(
+                  game,
+                  data.piece_tables,
+                  data.depth_searched,
+                  best_eval,
+                  best_opponent_move,
+                )
               SearchResult(
                 eval,
                 nodes_searched + 1,
@@ -471,7 +478,72 @@ fn search_loop(
   }
 }
 
-pub fn evaluate(
+fn search_all_captures(
+  game: Game,
+  piece_tables: table.PieceTables,
+  depth_searched: Int,
+  best_eval: Int,
+  best_opponent_move: Int,
+) -> Int {
+  let evaluation = evaluate(game, piece_tables, depth_searched)
+  case evaluation >= best_opponent_move {
+    True -> best_opponent_move
+    False -> {
+      let best_eval = case best_eval > evaluation {
+        True -> best_eval
+        False -> evaluation
+      }
+      let #(game, captures) = info.captures(game)
+      let capture_moves = order_moves(game, captures)
+
+      search_all_captures_loop(
+        game,
+        capture_moves,
+        piece_tables,
+        depth_searched,
+        best_eval,
+        best_opponent_move,
+      )
+    }
+  }
+}
+
+fn search_all_captures_loop(
+  game: Game,
+  moves: List(Move),
+  piece_tables: table.PieceTables,
+  depth_searched: Int,
+  best_eval: Int,
+  best_opponent_move: Int,
+) -> Int {
+  case moves {
+    [] -> best_eval
+    [move, ..moves] -> {
+      let evaluation =
+        -search_all_captures(
+          info.apply_move(game, move),
+          piece_tables,
+          depth_searched + 1,
+          -best_opponent_move,
+          -best_eval,
+        )
+      case evaluation >= best_opponent_move {
+        True -> best_opponent_move
+        False ->
+          search_all_captures_loop(
+            game,
+            moves,
+            piece_tables,
+            depth_searched,
+            best_eval,
+            best_opponent_move,
+          )
+      }
+    }
+  }
+}
+
+fn evaluate(
   game: Game,
   piece_tables: table.PieceTables,
   depth_searched: Int,

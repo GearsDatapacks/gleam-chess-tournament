@@ -137,7 +137,7 @@ pub fn legal(game: Game) -> List(Move) {
       }
     })
 
-  do_legal(game, attack_information(game, king_position))
+  do_legal(game, attack_information(game, king_position), AllMoves)
 }
 
 fn get_check_attack_lines(game: Game) -> List(List(Position)) {
@@ -369,12 +369,29 @@ fn get_check_block_line(game: Game, king_position: Position) -> CheckLine {
   }
 }
 
-pub fn do_legal(game: Game, attack_information: AttackInformation) -> List(Move) {
+pub type Generate {
+  AllMoves
+  OnlyCaptures
+  NoCaptures
+}
+
+pub fn do_legal(
+  game: Game,
+  attack_information: AttackInformation,
+  generate: Generate,
+) -> List(Move) {
   use moves, square, position <- iv.index_fold(game.board, [])
 
   case square {
     board.Occupied(piece) if piece.colour == game.to_move ->
-      get_moves_for_piece(game, attack_information, piece, position, moves)
+      get_moves_for_piece(
+        game,
+        attack_information,
+        piece,
+        position,
+        moves,
+        generate,
+      )
     _ -> moves
   }
 }
@@ -385,6 +402,7 @@ fn get_moves_for_piece(
   piece: piece.Piece,
   position: Position,
   moves: List(Move),
+  generate: Generate,
 ) -> List(Move) {
   case piece.kind {
     Bishop ->
@@ -394,6 +412,7 @@ fn get_moves_for_piece(
         direction.bishop_directions,
         attack_information,
         moves,
+        generate,
       )
     Queen ->
       get_sliding_moves(
@@ -402,6 +421,7 @@ fn get_moves_for_piece(
         direction.queen_directions,
         attack_information,
         moves,
+        generate,
       )
     Rook ->
       get_sliding_moves(
@@ -410,10 +430,12 @@ fn get_moves_for_piece(
         direction.rook_directions,
         attack_information,
         moves,
+        generate,
       )
-    King -> get_king_moves(game, attack_information, position, moves)
-    Pawn -> get_pawn_moves(game, position, attack_information, moves)
-    Knight -> get_knight_moves(game, position, attack_information, moves)
+    King -> get_king_moves(game, attack_information, position, moves, generate)
+    Pawn -> get_pawn_moves(game, position, attack_information, moves, generate)
+    Knight ->
+      get_knight_moves(game, position, attack_information, moves, generate)
   }
 }
 
@@ -421,18 +443,19 @@ fn maybe_move(
   game: Game,
   from: Position,
   direction: Direction,
-  allow_captures: Bool,
+  generate: Generate,
 ) -> Result(BasicMove, Nil) {
   case direction.in_direction(from, direction) {
     Error(_) -> Error(Nil)
     Ok(to) ->
-      case iv.get(game.board, to) {
-        Error(_) -> Error(Nil)
-        Ok(board.Empty) -> Ok(Move(from:, to:))
-        Ok(board.Occupied(Piece(colour:, ..)))
-          if colour != game.to_move && allow_captures
+      case iv.get(game.board, to), generate {
+        Ok(board.Empty), AllMoves | Ok(board.Empty), NoCaptures ->
+          Ok(Move(from:, to:))
+        Ok(board.Occupied(Piece(colour:, ..))), AllMoves
+        | Ok(board.Occupied(Piece(colour:, ..))), OnlyCaptures
+          if colour != game.to_move
         -> Ok(Move(from:, to:))
-        _ -> Error(Nil)
+        _, _ -> Error(Nil)
       }
   }
 }
@@ -443,6 +466,7 @@ fn get_sliding_moves(
   directions: List(Direction),
   attack_information: AttackInformation,
   moves: List(Move),
+  generate: Generate,
 ) -> List(Move) {
   directions
   |> list.fold(moves, fn(moves, direction) {
@@ -453,6 +477,7 @@ fn get_sliding_moves(
       direction,
       attack_information,
       moves,
+      generate,
     )
   })
 }
@@ -464,6 +489,7 @@ fn get_sliding_moves_loop(
   direction: Direction,
   attack_information: AttackInformation,
   moves: List(Move),
+  generate: Generate,
 ) -> List(Move) {
   case direction.in_direction(position, direction) {
     Error(_) -> moves
@@ -478,7 +504,9 @@ fn get_sliding_moves_loop(
         }
         Ok(board.Empty) -> {
           let move = Move(from: original_position, to: new_position)
-          let moves = case piece_can_move(move, attack_information) {
+          let moves = case
+            generate != OnlyCaptures && piece_can_move(move, attack_information)
+          {
             False -> moves
             True -> [Basic(move), ..moves]
           }
@@ -489,6 +517,7 @@ fn get_sliding_moves_loop(
             direction,
             attack_information,
             moves,
+            generate,
           )
         }
         _ -> moves
@@ -546,11 +575,12 @@ fn get_king_moves(
   attack_information: AttackInformation,
   position: Position,
   moves: List(Move),
+  generate: Generate,
 ) -> List(Move) {
   let moves =
     direction.queen_directions
     |> list.fold(moves, fn(moves, direction) {
-      case maybe_move(game, position, direction, True) {
+      case maybe_move(game, position, direction, generate) {
         Error(_) -> moves
         Ok(move) ->
           case king_can_move(move, attack_information) {
@@ -559,7 +589,7 @@ fn get_king_moves(
           }
       }
     })
-  case attack_information.in_check {
+  case attack_information.in_check || generate == OnlyCaptures {
     True -> moves
     False -> get_castling_moves(game, attack_information, moves)
   }
@@ -650,10 +680,11 @@ fn get_knight_moves(
   position: Position,
   attack_information: AttackInformation,
   moves: List(Move),
+  generate: Generate,
 ) -> List(Move) {
   direction.knight_directions
   |> list.fold(moves, fn(moves, direction) {
-    case maybe_move(game, position, direction, True) {
+    case maybe_move(game, position, direction, generate) {
       Error(_) -> moves
       Ok(move) ->
         case piece_can_move(move, attack_information) {
@@ -684,6 +715,7 @@ fn get_pawn_moves(
   position: Position,
   attack_information: AttackInformation,
   moves: List(Move),
+  generate: Generate,
 ) -> List(Move) {
   let #(direction, take_left, take_right) = case game.to_move {
     Black -> #(direction.down, direction.down_left, direction.down_right)
@@ -700,28 +732,38 @@ fn get_pawn_moves(
     |> pawn_capture(game, position, take_left, attack_information)
     |> pawn_capture(game, position, take_right, attack_information)
 
-  case maybe_move(game, position, direction, False) {
-    Ok(move) -> {
-      let moves = case piece_can_move(move, attack_information) {
-        False -> moves
-        True -> add_pawn_moves(move, game.to_move, moves)
-      }
-      case can_double_move {
-        False -> moves
-        True ->
-          case
-            maybe_move(game, position, direction.multiply(direction, 2), False)
-          {
-            Error(_) -> moves
-            Ok(move) ->
-              case piece_can_move(move, attack_information) {
-                False -> moves
-                True -> add_pawn_moves(move, game.to_move, moves)
+  case generate {
+    OnlyCaptures -> moves
+    AllMoves | NoCaptures -> {
+      case maybe_move(game, position, direction, NoCaptures) {
+        Ok(move) -> {
+          let moves = case piece_can_move(move, attack_information) {
+            False -> moves
+            True -> add_pawn_moves(move, game.to_move, moves)
+          }
+          case can_double_move {
+            False -> moves
+            True ->
+              case
+                maybe_move(
+                  game,
+                  position,
+                  direction.multiply(direction, 2),
+                  NoCaptures,
+                )
+              {
+                Error(_) -> moves
+                Ok(move) ->
+                  case piece_can_move(move, attack_information) {
+                    False -> moves
+                    True -> add_pawn_moves(move, game.to_move, moves)
+                  }
               }
           }
+        }
+        Error(_) -> moves
       }
     }
-    Error(_) -> moves
   }
 }
 
