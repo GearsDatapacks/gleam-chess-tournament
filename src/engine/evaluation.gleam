@@ -9,7 +9,6 @@ import engine/table
 import gleam/dict
 import gleam/float
 import gleam/int
-import gleam/option.{None, Some}
 import gleam/pair
 import gleam/result
 import iv
@@ -238,8 +237,7 @@ fn search_top_level(
           }
 
           let eval = case result.eval_kind {
-            hash.AtLeast -> eval - 1
-            hash.AtMost -> eval - 1
+            hash.AtLeast | hash.AtMost -> eval - 1
             hash.Exact -> eval
           }
 
@@ -604,28 +602,21 @@ fn guess_eval(game: Game, full_move: Move) -> Int {
   case full_move {
     move.LongCastle | move.ShortCastle -> 0
     move.Basic(move) | move.Promotion(move:, ..) -> {
-      let promotion_kind = case full_move {
-        move.Promotion(new_kind:, ..) -> Some(new_kind)
-        _ -> None
+      let guess = case full_move {
+        move.Promotion(new_kind:, ..) -> piece_score(new_kind)
+        _ -> 0
       }
 
-      let guess = 0
-
       let guess = case
-        iv.get(game.game.board, move.from),
-        iv.get(game.game.board, move.to)
+        iv.get_or_default(game.game.board, move.from, board.Empty),
+        iv.get_or_default(game.game.board, move.to, board.Empty)
       {
-        Ok(board.Occupied(moving_piece)), Ok(board.Occupied(captured_piece)) ->
+        board.Occupied(moving_piece), board.Occupied(captured_piece) ->
           guess
           + piece_score(captured_piece.kind)
           * 10
           - piece_score(moving_piece.kind)
         _, _ -> guess
-      }
-
-      let guess = case promotion_kind {
-        None -> guess
-        Some(kind) -> guess + piece_score(kind)
       }
 
       // TODO: Reduce score for moving into pawn attacks (we currently don't have enough info to deduce this)
