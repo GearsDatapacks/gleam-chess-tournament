@@ -93,19 +93,12 @@ fn piece_can_move(
   }
 }
 
-pub fn attack_information(game: Game) -> AttackInformation {
+pub fn attack_information(
+  game: Game,
+  king_position: Position,
+) -> AttackInformation {
   let attacks =
     attacks(Game(..game, to_move: piece.reverse_colour(game.to_move)))
-
-  let king_position =
-    iv.index_fold(game.board, 0, fn(acc, square, position) {
-      case square {
-        board.Occupied(piece.Piece(colour:, kind: piece.King))
-          if colour == game.to_move
-        -> position
-        _ -> acc
-      }
-    })
 
   let in_check = list.contains(attacks, king_position)
   let check_attack_lines = case in_check {
@@ -134,7 +127,17 @@ pub fn attack_information(game: Game) -> AttackInformation {
 }
 
 pub fn legal(game: Game) -> List(Move) {
-  do_legal(game, attack_information(game))
+  let king_position =
+    iv.index_fold(game.board, 0, fn(acc, square, position) {
+      case square {
+        board.Occupied(piece.Piece(colour:, kind: piece.King))
+          if colour == game.to_move
+        -> position
+        _ -> acc
+      }
+    })
+
+  do_legal(game, attack_information(game, king_position))
 }
 
 fn get_check_attack_lines(game: Game) -> List(List(Position)) {

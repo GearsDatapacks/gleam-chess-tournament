@@ -27,6 +27,10 @@ pub type Square {
 pub type Position =
   Int
 
+pub type Positions {
+  Positions(white: Position, black: Position)
+}
+
 pub fn position_to_string(position: Position) -> String {
   let file = case position % 8 {
     0 -> "a"

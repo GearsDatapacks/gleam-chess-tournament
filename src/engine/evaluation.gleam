@@ -512,7 +512,10 @@ fn evaluate_for_colour(
   colour: piece.Colour,
   piece_tables: table.PieceTables,
 ) -> Int {
-  let #(king_position, enemy_king_position) = find_kings(game, colour)
+  let #(king_position, enemy_king_position) = case colour {
+    piece.White -> #(game.king_positions.white, game.king_positions.black)
+    piece.Black -> #(game.king_positions.black, game.king_positions.white)
+  }
 
   let endgame_weight = endgame_weight(game, piece.reverse_colour(colour))
   let endgame_eval =
@@ -560,23 +563,6 @@ fn piece_score(kind: piece.Kind) -> Int {
     piece.Bishop -> 300
     piece.Knight -> 300
     piece.Pawn -> 100
-  }
-}
-
-fn find_kings(
-  game: Game,
-  for_colour: piece.Colour,
-) -> #(board.Position, board.Position) {
-  use #(king, enemy_king), square, position <- iv.index_fold(game.game.board, #(
-    0,
-    0,
-  ))
-  case square {
-    board.Occupied(piece.Piece(kind: piece.King, colour:))
-      if colour == for_colour
-    -> #(position, enemy_king)
-    board.Occupied(piece.Piece(kind: piece.King, ..)) -> #(king, position)
-    _ -> #(king, enemy_king)
   }
 }
 
