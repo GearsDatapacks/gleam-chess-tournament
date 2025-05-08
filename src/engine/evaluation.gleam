@@ -15,8 +15,7 @@ import iv
 import utils/list
 import wisp
 
-pub fn best_move(game: game.Game) -> Result(Move, Nil) {
-  let start_time = birl.monotonic_now()
+pub fn best_move(game: game.Game, start_time: Int) -> Result(Move, Nil) {
   wisp.log_info("Finding best move for: " <> game.to_fen(game))
   let #(game, moves) = info.legal(info.new(game))
   let SearchResult(

@@ -1,3 +1,4 @@
+import birl
 import chess
 import chess/game
 import chess/move
@@ -39,12 +40,13 @@ fn move_decoder() {
 }
 
 fn handle_move(request: Request) -> Response {
+  let now = birl.monotonic_now()
   use body <- wisp.require_string_body(request)
   let decode_result = json.parse(body, move_decoder())
   case decode_result {
     Error(_) -> wisp.bad_request()
     Ok(fen) -> {
-      let move_result = chess.move(fen)
+      let move_result = chess.move(fen, now)
       case move_result {
         Ok(move) -> wisp.ok() |> wisp.string_body(move.to_string(move))
         Error(reason) ->
@@ -71,12 +73,13 @@ fn handle_legal(request: Request) -> Response {
 }
 
 fn handle_dbg_move(request: Request) -> Response {
+  let now = birl.monotonic_now()
   use body <- wisp.require_string_body(request)
   let decode_result = json.parse(body, move_decoder())
   case decode_result {
     Error(_) -> wisp.bad_request()
     Ok(fen) -> {
-      let move_result = chess.move(fen)
+      let move_result = chess.move(fen, now)
       case move_result {
         Ok(move) ->
           wisp.ok()
