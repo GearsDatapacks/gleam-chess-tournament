@@ -528,7 +528,11 @@ fn search_all_captures_loop(
         )
       case evaluation >= best_opponent_move {
         True -> best_opponent_move
-        False ->
+        False -> {
+          let best_eval = case evaluation > best_eval {
+            True -> evaluation
+            False -> best_eval
+          }
           search_all_captures_loop(
             game,
             moves,
@@ -537,6 +541,7 @@ fn search_all_captures_loop(
             best_eval,
             best_opponent_move,
           )
+        }
       }
     }
   }
