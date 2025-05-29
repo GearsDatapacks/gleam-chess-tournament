@@ -3,6 +3,7 @@ import chess/game
 import chess/move.{type Move}
 import chess/piece
 import engine/hash
+import engine/table
 import gleam/option.{type Option, None, Some}
 import iv
 
@@ -12,14 +13,18 @@ pub type Game {
     attack_information: Option(move.AttackInformation),
     legal_moves: Option(List(Move)),
     hash_data: hash.HashData,
+    piece_tables: table.PieceTables,
     zobrist_hash: Int,
     king_positions: Positions,
   )
 }
 
-pub fn new(game: game.Game) -> Game {
+pub fn new(
+  game: game.Game,
+  hash_data: hash.HashData,
+  tables: table.PieceTables,
+) -> Game {
   let king_positions = find_kings(game.board)
-  let hash_data = hash.generate_data()
 
   Game(
     game:,
@@ -27,6 +32,7 @@ pub fn new(game: game.Game) -> Game {
     legal_moves: None,
     zobrist_hash: hash.hash_position(game, hash_data),
     hash_data:,
+    piece_tables: tables,
     king_positions:,
   )
 }

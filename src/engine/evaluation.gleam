@@ -15,9 +15,14 @@ import iv
 import utils/list
 import wisp
 
-pub fn best_move(game: game.Game, start_time: Int) -> Result(Move, Nil) {
+pub fn best_move(
+  game: game.Game,
+  start_time: Int,
+  hash_data: hash.HashData,
+  piece_tables: table.PieceTables,
+) -> Result(Move, Nil) {
   wisp.log_info("Finding best move for: " <> game.to_fen(game))
-  let #(game, moves) = info.legal(info.new(game))
+  let #(game, moves) = info.legal(info.new(game, hash_data, piece_tables))
   let SearchResult(
     value: move,
     nodes_searched:,
@@ -30,7 +35,6 @@ pub fn best_move(game: game.Game, start_time: Int) -> Result(Move, Nil) {
       moves,
       SearchData(
         piece_tables: table.construct_tables(),
-        hash_data: hash.generate_data(),
         cached_positions: dict.new(),
         depth_searched: 0,
         start_time:,
@@ -94,7 +98,6 @@ type SearchResult(a) {
 type SearchData {
   SearchData(
     piece_tables: table.PieceTables,
-    hash_data: hash.HashData,
     cached_positions: hash.Cache,
     depth_searched: Int,
     start_time: Int,

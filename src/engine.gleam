@@ -3,6 +3,8 @@ import chess
 import chess/game
 import chess/move
 import chess/piece
+import engine/hash
+import engine/table
 import gleam/dynamic/decode
 import gleam/erlang/process
 import gleam/json
@@ -15,7 +17,7 @@ pub fn main() {
   let secret_key_base = wisp.random_string(64)
 
   let assert Ok(_) =
-    handle_request
+    handle_request(_, hash.generate_data(), table.construct_tables())
     |> wisp_mist.handler(secret_key_base)
     |> mist.new
     |> mist.bind("0.0.0.0")
@@ -25,11 +27,15 @@ pub fn main() {
   process.sleep_forever()
 }
 
-fn handle_request(request: Request) -> Response {
+fn handle_request(
+  request: Request,
+  hash_data: hash.HashData,
+  piece_tables: table.PieceTables,
+) -> Response {
   case wisp.path_segments(request) {
-    ["move"] -> handle_move(request)
+    ["move"] -> handle_move(request, hash_data, piece_tables)
     ["legal"] -> handle_legal(request)
-    ["dbg_move"] -> handle_dbg_move(request)
+    ["dbg_move"] -> handle_dbg_move(request, hash_data, piece_tables)
     _ -> wisp.ok()
   }
 }
@@ -39,14 +45,18 @@ fn move_decoder() {
   decode.success(fen)
 }
 
-fn handle_move(request: Request) -> Response {
+fn handle_move(
+  request: Request,
+  hash_data: hash.HashData,
+  piece_tables: table.PieceTables,
+) -> Response {
   let now = birl.monotonic_now()
   use body <- wisp.require_string_body(request)
   let decode_result = json.parse(body, move_decoder())
   case decode_result {
     Error(_) -> wisp.bad_request()
     Ok(fen) -> {
-      let move_result = chess.move(fen, now)
+      let move_result = chess.move(fen, now, hash_data, piece_tables)
       case move_result {
         Ok(move) -> wisp.ok() |> wisp.string_body(move.to_string(move))
         Error(reason) ->
@@ -72,14 +82,18 @@ fn handle_legal(request: Request) -> Response {
   }
 }
 
-fn handle_dbg_move(request: Request) -> Response {
+fn handle_dbg_move(
+  request: Request,
+  hash_data: hash.HashData,
+  piece_tables: table.PieceTables,
+) -> Response {
   let now = birl.monotonic_now()
   use body <- wisp.require_string_body(request)
   let decode_result = json.parse(body, move_decoder())
   case decode_result {
     Error(_) -> wisp.bad_request()
     Ok(fen) -> {
-      let move_result = chess.move(fen, now)
+      let move_result = chess.move(fen, now, hash_data, piece_tables)
       case move_result {
         Ok(move) ->
           wisp.ok()
