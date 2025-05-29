@@ -1,9 +1,8 @@
 import chess/piece
-import gleam/list
 import iv
 
 const pawn = [
-  0, 0, 0, 0, 0, 0, 0, 0, 50, 50, 50, 50, 50, 50, 50, 50, 10, 10, 20, 30, 30, 20,
+  0, 0, 0, 0, 0, 0, 0, 0, 30, 30, 30, 30, 30, 30, 30, 30, 10, 10, 20, 30, 30, 20,
   10, 10, 5, 5, 10, 25, 25, 10, 5, 5, 0, 0, 0, 20, 20, 0, 0, 0, 5, -5, -10, 0, 0,
   -10, -5, 5, 5, 10, 10, -20, -20, 10, 10, 5, 0, 0, 0, 0, 0, 0, 0, 0,
 ]
@@ -55,10 +54,8 @@ pub opaque type PieceTables {
     bishop: iv.Array(Int),
     rook: iv.Array(Int),
     queen: iv.Array(Int),
-    king_white: iv.Array(Int),
-    king_black: iv.Array(Int),
-    king_endgame_white: iv.Array(Int),
-    king_endgame_black: iv.Array(Int),
+    king: iv.Array(Int),
+    king_endgame: iv.Array(Int),
   )
 }
 
@@ -69,10 +66,8 @@ pub fn construct_tables() -> PieceTables {
     bishop: iv.from_list(bishop),
     rook: iv.from_list(rook),
     queen: iv.from_list(queen),
-    king_white: iv.from_list(king),
-    king_black: iv.from_list(list.reverse(king)),
-    king_endgame_white: iv.from_list(king_endgame),
-    king_endgame_black: iv.from_list(list.reverse(king_endgame)),
+    king: iv.from_list(king),
+    king_endgame: iv.from_list(king_endgame),
   )
 }
 
@@ -82,32 +77,31 @@ pub fn piece_score(
   position: Int,
   endgame_weight: Int,
 ) -> Int {
-  let table = case piece.kind, piece.colour {
-    piece.Pawn, _ -> tables.pawn
-    piece.Bishop, _ -> tables.bishop
-    piece.Knight, _ -> tables.knight
-    piece.Queen, _ -> tables.queen
-    piece.Rook, _ -> tables.rook
-    piece.King, piece.White -> tables.king_white
-    piece.King, piece.Black -> tables.king_black
+  let table = case piece.kind {
+    piece.Pawn -> tables.pawn
+    piece.Bishop -> tables.bishop
+    piece.Knight -> tables.knight
+    piece.Queen -> tables.queen
+    piece.Rook -> tables.rook
+    piece.King -> tables.king
   }
 
-  let score = iv.get_or_default(table, position, 0)
-  case piece.kind {
-    piece.King if endgame_weight > 0 -> {
-      let table = case piece.colour {
-        piece.White -> tables.king_endgame_white
-        piece.Black -> tables.king_endgame_black
-      }
+  let index = case piece.colour {
+    piece.White -> position
+    piece.Black -> 63 - position
+  }
 
+  let score = iv.get_or_default(table, index, 0)
+  case piece.kind {
+    piece.King if endgame_weight > 0 ->
       {
         score
         * { 100 - endgame_weight }
-        + iv.get_or_default(table, position, 0)
+        + iv.get_or_default(tables.king_endgame, index, 0)
         * endgame_weight
       }
       / 100
-    }
+
     _ -> score
   }
 }
