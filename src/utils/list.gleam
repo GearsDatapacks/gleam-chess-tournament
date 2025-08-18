@@ -1,3 +1,7 @@
+//// A reimplementation of several `gleam/list` functions for improved performance.
+//// Includes functions such as map without reversing the list at the end, when 
+//// order preservation is not necessary.
+
 import gleam/list
 import gleam/order
 
@@ -31,37 +35,44 @@ pub fn any(list: List(a), f: fn(a) -> Bool) -> Bool {
   }
 }
 
-pub fn map(list: List(a), f: fn(a) -> b) -> List(b) {
-  do_map(list, f, [])
+/// Maps a list with a function, while reversing the list. This is faster than
+/// `gleam/list.map` as the recursive algorithm already reverses it, so no extra
+/// reverse is required at the end.
+pub fn map_reverse(list: List(a), f: fn(a) -> b) -> List(b) {
+  do_map_reverse(list, f, [])
 }
 
-fn do_map(list: List(a), f: fn(a) -> b, acc: List(b)) -> List(b) {
+fn do_map_reverse(list: List(a), f: fn(a) -> b, acc: List(b)) -> List(b) {
   case list {
     [] -> acc
-    [first, ..rest] -> do_map(rest, f, [f(first), ..acc])
+    [first, ..rest] -> do_map_reverse(rest, f, [f(first), ..acc])
   }
 }
 
-pub fn filter(list: List(a), f: fn(a) -> Bool) -> List(a) {
-  do_filter(list, f, [])
+/// Filters a list while reversing it. Similar to `reverse_map`, this is more
+/// efficient than preserving the order.
+pub fn filter_reverse(list: List(a), f: fn(a) -> Bool) -> List(a) {
+  do_filter_reverse(list, f, [])
 }
 
-fn do_filter(list: List(a), f: fn(a) -> Bool, acc: List(a)) -> List(a) {
+fn do_filter_reverse(list: List(a), f: fn(a) -> Bool, acc: List(a)) -> List(a) {
   case list {
     [] -> acc
     [first, ..rest] ->
       case f(first) {
-        True -> do_filter(rest, f, [first, ..acc])
-        False -> do_filter(rest, f, acc)
+        True -> do_filter_reverse(rest, f, [first, ..acc])
+        False -> do_filter_reverse(rest, f, acc)
       }
   }
 }
 
-pub fn filter_map(list: List(a), f: fn(a) -> Result(b, c)) -> List(b) {
-  do_filter_map(list, f, [])
+/// Just like `filter_reverse` and `map_reverse`, this is more efficient that
+/// a regular `filter_map`, when order is not needed.
+pub fn filter_map_reverse(list: List(a), f: fn(a) -> Result(b, c)) -> List(b) {
+  do_filter_map_reverse(list, f, [])
 }
 
-fn do_filter_map(
+fn do_filter_map_reverse(
   list: List(a),
   f: fn(a) -> Result(b, c),
   acc: List(b),
@@ -70,8 +81,8 @@ fn do_filter_map(
     [] -> acc
     [first, ..rest] ->
       case f(first) {
-        Ok(value) -> do_filter_map(rest, f, [value, ..acc])
-        Error(_) -> do_filter_map(rest, f, acc)
+        Ok(value) -> do_filter_map_reverse(rest, f, [value, ..acc])
+        Error(_) -> do_filter_map_reverse(rest, f, acc)
       }
   }
 }

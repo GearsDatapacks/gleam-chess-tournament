@@ -325,10 +325,12 @@ fn get_check_block_line(game: Game, king_position: Position) -> CheckLine {
           case
             line,
             get_sliding_lines(game, position, direction.rook_directions)
-            |> list.filter(list.any(_, fn(move) { move.to == king_position }))
+            |> list.filter_reverse(
+              list.any(_, fn(move) { move.to == king_position }),
+            )
           {
             NoLine, [line] ->
-              Single([position, ..list.map(line, fn(move) { move.to })])
+              Single([position, ..list.map_reverse(line, fn(move) { move.to })])
             _, [] -> line
             _, _ -> Multiple
           }
@@ -336,10 +338,12 @@ fn get_check_block_line(game: Game, king_position: Position) -> CheckLine {
           case
             line,
             get_sliding_lines(game, position, direction.bishop_directions)
-            |> list.filter(list.any(_, fn(move) { move.to == king_position }))
+            |> list.filter_reverse(
+              list.any(_, fn(move) { move.to == king_position }),
+            )
           {
             NoLine, [line] ->
-              Single([position, ..list.map(line, fn(move) { move.to })])
+              Single([position, ..list.map_reverse(line, fn(move) { move.to })])
             _, [] -> line
             _, _ -> Multiple
           }
@@ -347,10 +351,12 @@ fn get_check_block_line(game: Game, king_position: Position) -> CheckLine {
           case
             line,
             get_sliding_lines(game, position, direction.queen_directions)
-            |> list.filter(list.any(_, fn(move) { move.to == king_position }))
+            |> list.filter_reverse(
+              list.any(_, fn(move) { move.to == king_position }),
+            )
           {
             NoLine, [line] ->
-              Single([position, ..list.map(line, fn(move) { move.to })])
+              Single([position, ..list.map_reverse(line, fn(move) { move.to })])
             _, [] -> line
             _, _ -> Multiple
           }
@@ -530,7 +536,10 @@ fn get_sliding_lines(
   position: Position,
   directions: List(Direction),
 ) -> List(List(BasicMove)) {
-  list.map(directions, get_sliding_lines_loop(game, position, position, _, []))
+  list.map_reverse(
+    directions,
+    get_sliding_lines_loop(game, position, position, _, []),
+  )
 }
 
 fn get_sliding_lines_loop(

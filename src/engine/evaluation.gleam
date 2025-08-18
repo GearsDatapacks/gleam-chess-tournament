@@ -188,7 +188,7 @@ fn iteratively_deepen_loop(
         result.nodes_searched,
         result.cache_hits,
         best_move,
-        list.map(ordered_moves, pair.second),
+        list.map_reverse(ordered_moves, pair.second),
         SearchData(..data, cached_positions: result.cached_positions),
         birl.monotonic_now(),
       )
@@ -672,9 +672,9 @@ fn endgame_force_king_to_corner_eval(
 
 fn order_moves(game: Game, moves: List(Move)) -> List(Move) {
   moves
-  |> list.map(fn(move) { #(move, guess_eval(game, move)) })
+  |> list.map_reverse(fn(move) { #(move, guess_eval(game, move)) })
   |> list.sort(fn(a, b) { int.compare(a.1, b.1) })
-  |> list.map(pair.first)
+  |> list.map_reverse(pair.first)
 }
 
 fn guess_eval(game: Game, full_move: Move) -> Int {
