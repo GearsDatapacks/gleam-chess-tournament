@@ -1,4 +1,4 @@
-import chess/board.{type Positions, Positions}
+import chess/board.{type Position}
 import chess/game
 import chess/move.{type Move}
 import chess/piece
@@ -7,11 +7,18 @@ import engine/table
 import gleam/option.{type Option, None, Some}
 import iv
 
+pub type Positions {
+  Positions(white: Position, black: Position)
+}
+
+/// Extra information about game state, so it doesn't need to be recalculated
+/// every time.
 pub type Game {
   Game(
     game: game.Game,
     attack_information: Option(move.AttackInformation),
     legal_moves: Option(List(Move)),
+    captures: Option(List(Move)),
     hash_data: hash.HashData,
     piece_tables: table.PieceTables,
     zobrist_hash: Int,
@@ -19,6 +26,7 @@ pub type Game {
   )
 }
 
+/// Calculate initial information to be stored
 pub fn new(
   game: game.Game,
   hash_data: hash.HashData,
@@ -30,6 +38,7 @@ pub fn new(
     game:,
     attack_information: None,
     legal_moves: None,
+    captures: None,
     zobrist_hash: hash.hash_position(game, hash_data),
     hash_data:,
     piece_tables: tables,
@@ -37,7 +46,7 @@ pub fn new(
   )
 }
 
-fn find_kings(board: board.Board) -> Positions {
+fn find_kings(board: iv.Array(board.Square)) -> Positions {
   use positions, square, position <- iv.index_fold(board, Positions(0, 0))
   case square {
     board.Occupied(piece.Piece(kind: piece.King, colour: piece.White)) ->
@@ -48,6 +57,7 @@ fn find_kings(board: board.Board) -> Positions {
   }
 }
 
+/// Apply a move to the game, updating relevant information if necessary
 pub fn apply_move(game: Game, move: Move) -> Game {
   let Positions(white:, black:) = game.king_positions
   let king_positions = case move, game.game.to_move {
@@ -64,8 +74,10 @@ pub fn apply_move(game: Game, move: Move) -> Game {
 
   let board = move.apply(game.game, move)
   let new_hash = case move.info(game.game, move) {
-    Error(_) -> hash.hash_position(board, game.hash_data)
     Ok(info) -> hash.update(game.zobrist_hash, info, game.hash_data)
+    // If the move isn't a basic move (e.g. castling), we can't easily update
+    // the hash so we must recalculate it
+    Error(_) -> hash.hash_position(board, game.hash_data)
   }
 
   Game(
@@ -78,6 +90,7 @@ pub fn apply_move(game: Game, move: Move) -> Game {
   )
 }
 
+/// Get or recalculate information about which squares are attacked on the board
 pub fn attack_information(game: Game) -> #(Game, move.AttackInformation) {
   case game.attack_information {
     Some(information) -> #(game, information)
@@ -92,6 +105,7 @@ pub fn attack_information(game: Game) -> #(Game, move.AttackInformation) {
   }
 }
 
+/// Get or recalculate the current legal moves on the board
 pub fn legal(game: Game) -> #(Game, List(Move)) {
   case game.legal_moves {
     Some(moves) -> #(game, moves)
@@ -103,7 +117,14 @@ pub fn legal(game: Game) -> #(Game, List(Move)) {
   }
 }
 
+/// Get or recalculate available captures on the board
 pub fn captures(game: Game) -> #(Game, List(Move)) {
-  let #(game, attack_information) = attack_information(game)
-  #(game, move.do_legal(game.game, attack_information, move.OnlyCaptures))
+  case game.captures {
+    Some(captures) -> #(game, captures)
+    None -> {
+      let #(game, information) = attack_information(game)
+      let captures = move.do_legal(game.game, information, move.OnlyCaptures)
+      #(Game(..game, captures: Some(captures)), captures)
+    }
+  }
 }

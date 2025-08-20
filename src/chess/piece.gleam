@@ -1,5 +1,3 @@
-import gleam/string
-
 pub type Piece {
   Piece(colour: Colour, kind: Kind)
 }
@@ -37,21 +35,23 @@ pub fn from_fen(fen: String) -> Result(Piece, Nil) {
 }
 
 pub fn to_fen(piece: Piece) -> String {
-  let kind = case piece.kind {
-    Bishop -> "B"
-    King -> "K"
-    Knight -> "N"
-    Pawn -> "P"
-    Queen -> "Q"
-    Rook -> "R"
-  }
-
-  case piece.colour {
-    Black -> string.lowercase(kind)
-    White -> kind
+  case piece {
+    Piece(White, King) -> "K"
+    Piece(White, Queen) -> "Q"
+    Piece(White, Bishop) -> "B"
+    Piece(White, Knight) -> "N"
+    Piece(White, Rook) -> "R"
+    Piece(White, Pawn) -> "P"
+    Piece(Black, King) -> "k"
+    Piece(Black, Queen) -> "q"
+    Piece(Black, Bishop) -> "b"
+    Piece(Black, Knight) -> "n"
+    Piece(Black, Rook) -> "r"
+    Piece(Black, Pawn) -> "p"
   }
 }
 
+/// The types of pieces which a pawn can promote to
 pub const promotion_kinds = [Queen, Bishop, Knight, Rook]
 
 pub fn reverse_colour(colour: Colour) -> Colour {

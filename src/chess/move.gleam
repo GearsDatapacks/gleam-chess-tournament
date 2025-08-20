@@ -1020,16 +1020,16 @@ pub fn apply(game: Game, move: Move) -> Game {
       let board = case game.to_move {
         Black ->
           game.board
-          |> board.set(60, board.Empty)
-          |> board.set(61, board.Occupied(Piece(Black, Rook)))
-          |> board.set(62, board.Occupied(Piece(Black, King)))
-          |> board.set(63, board.Empty)
+          |> iv.try_set(60, board.Empty)
+          |> iv.try_set(61, board.Occupied(Piece(Black, Rook)))
+          |> iv.try_set(62, board.Occupied(Piece(Black, King)))
+          |> iv.try_set(63, board.Empty)
         White ->
           game.board
-          |> board.set(4, board.Empty)
-          |> board.set(5, board.Occupied(Piece(White, Rook)))
-          |> board.set(6, board.Occupied(Piece(White, King)))
-          |> board.set(7, board.Empty)
+          |> iv.try_set(4, board.Empty)
+          |> iv.try_set(5, board.Occupied(Piece(White, Rook)))
+          |> iv.try_set(6, board.Occupied(Piece(White, King)))
+          |> iv.try_set(7, board.Empty)
       }
       let castling = case game.to_move {
         Black ->
@@ -1057,18 +1057,18 @@ pub fn apply(game: Game, move: Move) -> Game {
       let board = case game.to_move {
         Black ->
           game.board
-          |> board.set(60, board.Empty)
-          |> board.set(59, board.Occupied(Piece(Black, Rook)))
-          |> board.set(58, board.Occupied(Piece(Black, King)))
-          |> board.set(57, board.Empty)
-          |> board.set(56, board.Empty)
+          |> iv.try_set(60, board.Empty)
+          |> iv.try_set(59, board.Occupied(Piece(Black, Rook)))
+          |> iv.try_set(58, board.Occupied(Piece(Black, King)))
+          |> iv.try_set(57, board.Empty)
+          |> iv.try_set(56, board.Empty)
         White ->
           game.board
-          |> board.set(4, board.Empty)
-          |> board.set(3, board.Occupied(Piece(White, Rook)))
-          |> board.set(2, board.Occupied(Piece(White, King)))
-          |> board.set(1, board.Empty)
-          |> board.set(0, board.Empty)
+          |> iv.try_set(4, board.Empty)
+          |> iv.try_set(3, board.Occupied(Piece(White, Rook)))
+          |> iv.try_set(2, board.Occupied(Piece(White, King)))
+          |> iv.try_set(1, board.Empty)
+          |> iv.try_set(0, board.Empty)
       }
       let castling = case game.to_move {
         Black ->
@@ -1120,8 +1120,8 @@ fn apply_basic_move(
       }
       #(
         game.board
-          |> board.set(move.to, square)
-          |> board.set(move.from, board.Empty),
+          |> iv.try_set(move.to, square)
+          |> iv.try_set(move.from, board.Empty),
         square,
       )
     }
@@ -1152,7 +1152,7 @@ fn apply_basic_move(
     False -> board
     True -> {
       let captured_pawn = move.from / 8 * 8 + move.to % 8
-      board.set(board, captured_pawn, board.Empty)
+      iv.try_set(board, captured_pawn, board.Empty)
     }
   }
 

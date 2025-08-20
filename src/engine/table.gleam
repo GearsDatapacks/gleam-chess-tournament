@@ -1,3 +1,9 @@
+//// Piece tables indicating stronger and weaker positions for each piece type.
+//// For example, knights are stronger in the centre of the board and weaker near
+//// the edge.
+//// Each table is made from white's perspective. To get scores for black, simply
+//// reverse the squares.
+
 import chess/piece
 import iv
 
@@ -40,6 +46,9 @@ const king = [
   20, 20, 0, 0, 0, 0, 20, 20, 20, 30, 10, 0, 0, 10, 30, 20,
 ]
 
+/// In the beginning and middle of the game, the king must be kept safe, however
+/// as the game progresses towards the end, the king should become more aggressive
+/// so we use a different set of scores for kings in the endgame.
 const king_endgame = [
   -50, -40, -30, -20, -20, -30, -40, -50, -30, -20, -10, 0, 0, -10, -20, -30,
   -30, -10, 20, 30, 30, 20, -10, -30, -30, -10, 30, 40, 40, 30, -10, -30, -30,
@@ -47,6 +56,7 @@ const king_endgame = [
   0, 0, 0, -30, -30, -50, -30, -30, -30, -30, -30, -30, -50,
 ]
 
+/// A type which keeps track of the table for each piece
 pub opaque type PieceTables {
   PieceTables(
     pawn: iv.Array(Int),
@@ -59,6 +69,8 @@ pub opaque type PieceTables {
   )
 }
 
+/// Turn the `List`s which are in the constants into `iv.Arrays` for faster
+/// accessing
 pub fn construct_tables() -> PieceTables {
   PieceTables(
     pawn: iv.from_list(pawn),
@@ -71,6 +83,7 @@ pub fn construct_tables() -> PieceTables {
   )
 }
 
+/// Calculate the score for a given piece at a position at some point in the game
 pub fn piece_score(
   tables: PieceTables,
   piece: piece.Piece,
@@ -86,6 +99,8 @@ pub fn piece_score(
     piece.King -> tables.king
   }
 
+  // If the piece is black, the table must be reversed to we index from the end
+  // instead.
   let index = case piece.colour {
     piece.White -> position
     piece.Black -> 63 - position
@@ -93,6 +108,8 @@ pub fn piece_score(
 
   let score = iv.get_or_default(table, index, 0)
   case piece.kind {
+    // If we are nearing the endgame, we interpolate between the king's early
+    // game table and the endgame table.
     piece.King if endgame_weight > 0 ->
       {
         score

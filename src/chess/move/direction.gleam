@@ -1,9 +1,13 @@
 import chess/board.{type Position}
 
+/// A direction along the board. This could be a cardinal direction such as left
+/// or up, or even a direction which jumps squares, such as how a knight moves.
 pub type Direction {
   Direction(file_change: Int, rank_change: Int)
 }
 
+/// Returns a position moved in a given direction, checking for it being within
+/// the bounds of the board.
 pub fn in_direction(
   position: Position,
   direction: Direction,
@@ -13,11 +17,14 @@ pub fn in_direction(
     position / 8 + direction.rank_change
   {
     file, rank if file < 0 || rank < 0 -> Error(Nil)
-    file, rank if file >= board.size || rank >= board.size -> Error(Nil)
+    file, rank if file >= board.side_length || rank >= board.side_length ->
+      Error(Nil)
     file, rank -> Ok(rank * 8 + file)
   }
 }
 
+/// Multiply a direction by a number, effectively getting the result of moving
+/// in that direction multiple times.
 pub fn multiply(direction: Direction, by: Int) -> Direction {
   Direction(
     file_change: direction.file_change * by,

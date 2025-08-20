@@ -16,6 +16,7 @@ pub type Game {
   )
 }
 
+/// Legal castling moves remaining
 pub type Castling {
   Castling(
     white_kingside: Bool,

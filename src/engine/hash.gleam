@@ -1,3 +1,5 @@
+//// An implementation of [Zobrist Hashing](https://www.chessprogramming.org/Zobrist_Hashing).
+
 import chess/board
 import chess/game
 import chess/move
@@ -33,6 +35,7 @@ const black_king = 11
 
 const num_pieces = 12
 
+/// Data structure for storing randomly generated data used for hashing positions
 pub opaque type HashData {
   HashData(table: iv.Array(Int), black_to_move: Int)
 }
@@ -41,7 +44,7 @@ const max_64_bit_int = 18_446_744_073_709_552_000
 
 pub fn generate_data() -> HashData {
   let table =
-    iv.initialise(num_pieces * board.size * board.size, fn(_) {
+    iv.initialise(num_pieces * board.side_length * board.side_length, fn(_) {
       int.random(max_64_bit_int)
     })
   let black_to_move = int.random(max_64_bit_int)
@@ -86,6 +89,8 @@ fn toggle_hash_square(
   int.bitwise_exclusive_or(iv.get_or_default(data.table, index, 0), hash)
 }
 
+/// Update an existing hash with a move. This is faster than recalculating the
+/// hash with the new board as it only has to change a few squares.
 pub fn update(hash: Int, move_info: move.MoveInfo, data: HashData) -> Int {
   let move.MoveInfo(
     capture:,
@@ -119,6 +124,11 @@ pub type CachedPosition {
   CachedPosition(depth: Int, kind: CacheKind, eval: Int)
 }
 
+/// When we cache a position, due to alpha-beta pruning, we don't always know
+/// for sure what the evaluation of that position is. We either know its exact
+/// evaluation, because it hasn't been pruned, or we know that it is at most a
+/// certain score, or we know that it is a least a certain score, due to pruning.
+/// This changes the way we treat the position when retrieving from the cache.
 pub type CacheKind {
   Exact
   AtMost
@@ -128,6 +138,7 @@ pub type CacheKind {
 pub type Cache =
   dict.Dict(Int, CachedPosition)
 
+/// Retrieve a cached position from the cache, if applicable.
 pub fn get(
   cache: Cache,
   hash: Int,
@@ -159,6 +170,8 @@ pub fn get(
   }
 }
 
+/// Store a position in the cache so we don't need to recalculate its evaluation
+/// later.
 pub fn set(
   cache: Cache,
   hash: Int,

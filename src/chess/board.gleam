@@ -3,17 +3,7 @@ import gleam/int
 import gleam/string
 import iv
 
-pub const size = 8
-
-pub type Board =
-  iv.Array(Square)
-
-pub fn set(board: Board, position: Position, square: Square) -> Board {
-  case iv.set(board, position, square) {
-    Ok(board) -> board
-    Error(_) -> board
-  }
-}
+pub const side_length = 8
 
 pub type Square {
   Empty
@@ -26,10 +16,6 @@ pub type Square {
 /// position = rank * 8 + file
 pub type Position =
   Int
-
-pub type Positions {
-  Positions(white: Position, black: Position)
-}
 
 pub fn position_to_string(position: Position) -> String {
   let file = case position % 8 {
@@ -64,19 +50,22 @@ pub fn position_from_string(string: String) -> Position {
   rank * 8 + file - 8
 }
 
-pub fn empty() -> Board {
-  iv.repeat(Empty, size * size)
+pub fn empty() -> iv.Array(Square) {
+  iv.repeat(Empty, side_length * side_length)
 }
 
 pub const starting_fen = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
 
-// pub const starting_fen = "8/3K4/4P3/8/8/8/6k1/7q w - - 0 1"
-
-pub fn from_fen(fen: String) -> Board {
-  from_fen_loop(fen, 0, size - 1, empty())
+pub fn from_fen(fen: String) -> iv.Array(Square) {
+  from_fen_loop(fen, 0, side_length - 1, empty())
 }
 
-fn from_fen_loop(fen: String, file: Int, rank: Int, board: Board) -> Board {
+fn from_fen_loop(
+  fen: String,
+  file: Int,
+  rank: Int,
+  board: iv.Array(Square),
+) -> iv.Array(Square) {
   case string.pop_grapheme(fen) {
     Error(_) -> board
     Ok(#("/", fen)) -> from_fen_loop(fen, 0, rank - 1, board)
@@ -87,7 +76,7 @@ fn from_fen_loop(fen: String, file: Int, rank: Int, board: Board) -> Board {
           case piece.from_fen(char) {
             Error(_) -> board
             Ok(piece) -> {
-              let board = set(board, rank * 8 + file, Occupied(piece))
+              let board = iv.try_set(board, rank * 8 + file, Occupied(piece))
               from_fen_loop(fen, file + 1, rank, board)
             }
           }
@@ -95,12 +84,12 @@ fn from_fen_loop(fen: String, file: Int, rank: Int, board: Board) -> Board {
   }
 }
 
-pub fn to_fen(board: Board) -> String {
-  to_fen_loop(board, 0, size - 1, 0, "")
+pub fn to_fen(board: iv.Array(Square)) -> String {
+  to_fen_loop(board, 0, side_length - 1, 0, "")
 }
 
 fn to_fen_loop(
-  board: Board,
+  board: iv.Array(Square),
   file: Int,
   rank: Int,
   empty: Int,
@@ -108,14 +97,14 @@ fn to_fen_loop(
 ) -> String {
   let fen = case file == 0 {
     True ->
-      case rank == size - 1 || rank < 0 {
+      case rank == side_length - 1 || rank < 0 {
         False -> fen <> "/"
         True -> fen
       }
     False -> fen
   }
 
-  let #(next_file, next_rank) = case file + 1 >= size {
+  let #(next_file, next_rank) = case file + 1 >= side_length {
     False -> #(file + 1, rank)
     True -> #(0, rank - 1)
   }
